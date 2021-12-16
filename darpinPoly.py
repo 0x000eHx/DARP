@@ -1,3 +1,5 @@
+import pathlib
+
 from darp import DARP
 import numpy as np
 from kruskal import Kruskal
@@ -9,8 +11,8 @@ from PIL import Image
 
 
 class DARPinPoly(DARP):
-    def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization):
-        DARP.__init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization)
+    def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, map_name):
+        DARP.__init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, map_name)
 
         if not self.success:
             print("DARP did not manage to find a solution for the given configuration!")
@@ -158,13 +160,16 @@ def get_area_indices(area, value, inv=False, obstacle=-1):
 
 if __name__ == '__main__':
 
-    area_map = get_area_map("test_maps/caves_0_transp_obs.png")
+    map_file_name = "TalsperreMalter_klein1.png"
+    map_path = pathlib.Path("test_maps", map_file_name)
+
+    area_map = get_area_map(map_path)
     obstacles_positions = get_area_indices(area_map, 0, True)
 
     rows, cols = area_map.shape
-    start_points = [(17, 1), (5, 28), (27, 21)]  # trust me, these points are inside the grid
+    start_points = [(65, 57), (174, 38), (201, 122)]  # trust me, these points are inside the grid
 
-    not_equal_portions = True  # this trigger should be True, if the portions are not equal
+    not_equal_portions = False  # this trigger should be True, if the portions are not equal
 
     if not_equal_portions:
         portions = [0.4, 0.3, 0.3]
@@ -194,7 +199,8 @@ if __name__ == '__main__':
     randomLevel = 0.0001
     dcells = 30
     importance = False
-    visualize = True
+    visualize = False
+    image_export = True
 
     print("\nInitial Conditions Defined:")
     print("Grid Dimensions:", rows, cols)
@@ -202,4 +208,4 @@ if __name__ == '__main__':
     print("Initial Robots' positions", start_points)
     print("Portions for each Robot:", portions, "\n")
 
-    poly = DARPinPoly(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize)
+    poly = DARPinPoly(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize, image_export, map_path.stem)

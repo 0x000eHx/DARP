@@ -9,6 +9,7 @@ pillow = "*"
 pygame = "*"
 scipy = "*"
 pipenv = "*"
+matplotlib = "*"
 
 [dev-packages]
 

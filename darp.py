@@ -1,41 +1,47 @@
+import pathlib
+
 import numpy as np
 import copy
 import sys
 import cv2
 from scipy import ndimage
 from Visualization import darp_area_visualization
+import time
+from matplotlib import pyplot
 
 np.set_printoptions(threshold=sys.maxsize)
 
 
 class DARP:
     def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions,
-                 initial_positions, portions, obstacles_positions, visualization):
+                 initial_positions, portions, obstacles_positions, visualization, image_export, map_file_name):
         self.rows = nx
         self.cols = ny
         self.effectiveSize = 0
-        self.visualization = visualization
+        self.map_file_name = map_file_name
+        self.visualization = visualization  # should the results get presented in pygame
+        self.image_export = image_export  # should the DARP result get exported as Image
         empty_space = []
 
         # TODO fix this input to be flexible in all dimensions
-        if nx > ny:
-            for j in range(ny, nx):
-                for i in range(nx):
-                    empty_space.append((i, j))
-            self.cols = self.rows
-        elif ny > nx:
-            for j in range(nx, ny):
-                for i in range(ny):
-                    empty_space.append((j, i))
-            self.rows = self.cols
+        #if nx > ny:
+        #    for j in range(ny, nx):
+        #        for i in range(nx):
+        #            empty_space.append((i, j))
+        #    self.cols = self.rows
+        #elif ny > nx:
+        #    for j in range(nx, ny):
+        #        for i in range(ny):
+        #            empty_space.append((j, i))
+        #    self.rows = self.cols
 
         self.A = np.zeros((self.rows, self.cols))
         self.ob = 0
+        self.init_robot_pos = initial_positions
         self.GridEnv = self.defineGridEnv(initial_positions, obstacles_positions, empty_space)
         # print("Given Grid area:")
         # print(self.GridEnv)
 
-        self.init_robot_pos = initial_positions
         self.MaxIter = MaxIter
         self.CCvariation = CCvariation
         self.randomLevel = randomLevel
@@ -69,7 +75,11 @@ class DARP:
 
         if self.visualization:
             self.assignment_matrix_visualization = darp_area_visualization(self.A, len(self.init_robot_pos), self.color, self.init_robot_pos)
+
         self.success = self.update()
+
+        if self.image_export:
+            self.export_A_to_image(self.A)
 
     def defineGridEnv(self, init_robot_pos, obstacles_positions, empty_space):
         """
@@ -77,7 +87,7 @@ class DARP:
         All tiles except obstacles, empty_space, initial robo start points will have the value -1.
         :param init_robot_pos: The initial robot start points (array) - tile value will be their array.index number
         :param obstacles_positions: The given array of obstacle tiles. obstacle tile value is -2
-        :param empty_space: The area/tiles positions (array) which are defined like obstacle tiles
+        :param empty_space: The area/tiles positions (array) which are defined as obstacle tiles
         :return: The prepared GridEnv
         """
 
@@ -177,7 +187,7 @@ class DARP:
                 iteration += 1
                 if self.visualization:
                     self.assignment_matrix_visualization.placeCells(iteration_number=iteration)
-                # time.sleep(0.5)
+                time.sleep(0.1)
 
             if iteration >= self.MaxIter:
                 self.MaxIter = self.MaxIter / 2
@@ -392,3 +402,15 @@ class DARP:
             distRobot = ((distRobot - MinV) / (MaxV - MinV))  # range 0 to 1
 
         return distRobot
+
+    def export_A_to_image(self, optimal_assignment_array):
+
+        file_path = pathlib.Path('result_export', str(self.map_file_name) + ".jpg")
+
+        # im = Image.fromarray(optimal_assignment_array, "RGB")
+        # im.save(file_path, 'jpeg')
+
+        pyplot.imsave(file_path, optimal_assignment_array)
+        # image.imsave(file_path, optimal_assignment_array)
+
+        pass
