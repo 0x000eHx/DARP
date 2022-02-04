@@ -50,8 +50,9 @@ def worker(input_queue, output_queue):
 def multi_processing_geometry_boundary_check(selected_area, selected_gdf):
     xmin, ymin, xmax, ymax = selected_gdf.total_bounds
 
-    # cell tile is one meter in lat/long, use min/max values of geopandas dataframe for reference which region we are in
-    cell_height, cell_width = get_lat_long_decimal_of_cell_by_meter(1, (ymax, xmin))  # latitude, longitude
+    # cell tile is one meter in lat/long, use centroid of area x, y values from geopandas for reference
+    # latitude (x diff), longitude (y diff)
+    cell_height, cell_width = get_lat_long_decimal_of_cell_by_meter(1, (selected_area.centroid.y, selected_area.centroid.x))
 
     rows = np.arange(ymin, ymax + cell_height, cell_height)
     columns = np.arange(xmin, xmax + cell_width, cell_width)
@@ -92,11 +93,12 @@ def multi_processing_geometry_boundary_check(selected_area, selected_gdf):
     return grid
 
 
-def serial_processing_geometry_boundary_check(area, selected_gdf):
+def serial_processing_geometry_boundary_check(selected_area, selected_gdf):
     xmin, ymin, xmax, ymax = selected_gdf.total_bounds
 
-    # cell tile is one meter in lat/long, use min/max values of geopandas dataframe for reference which region we are in
-    cell_height, cell_width = get_lat_long_decimal_of_cell_by_meter(1, (ymax, xmin))  # latitude, longitude
+    # cell tile is one meter in lat/long, use centroid of area x, y values from geopandas for reference
+    # latitude (x diff), longitude (y diff)
+    cell_height, cell_width = get_lat_long_decimal_of_cell_by_meter(1, (selected_area.centroid.y, selected_area.centroid.x))
 
     grid = []
     for x0 in tqdm(np.arange(xmin, xmax + cell_width, cell_width)):
@@ -104,7 +106,7 @@ def serial_processing_geometry_boundary_check(area, selected_gdf):
             x1 = x0 - cell_width
             y1 = y0 + cell_height
             new_cell = shapely.geometry.box(x0, y0, x1, y1)
-            if new_cell.within(area):
+            if new_cell.within(selected_area):
                 grid.append(new_cell)
             else:
                 pass
