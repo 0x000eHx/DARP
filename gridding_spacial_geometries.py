@@ -10,7 +10,7 @@ from multiprocessing import Process, Queue, cpu_count
 import queue
 
 
-def get_lat_long_decimal_of_cell_by_meter(meter_distance: int, startpoint_lat_long_tuple: tuple):
+def get_long_diff_in_meter(meter_distance: int, startpoint_lat_long_tuple: tuple):
     earth_radius = 6378137  # earth radius, sphere
 
     # Coordinate offsets in radians
@@ -52,7 +52,7 @@ def multi_processing_geometry_boundary_check(selected_area, selected_gdf):
 
     # cell tile is one meter in lat/long, use centroid of area x, y values from geopandas for reference
     # latitude (x diff), longitude (y diff)
-    cell_height, cell_width = get_lat_long_decimal_of_cell_by_meter(1, (selected_area.centroid.y, selected_area.centroid.x))
+    cell_height, cell_width = get_long_diff_in_meter(1, (selected_area.centroid.y, selected_area.centroid.x))
 
     rows = sorted(np.arange(ymin, ymax + cell_height, cell_height), reverse=True)  # scan from top to bottom
     columns = np.arange(xmin, xmax + cell_width, cell_width)  # scan from left to right
@@ -63,6 +63,8 @@ def multi_processing_geometry_boundary_check(selected_area, selected_gdf):
 
     num_of_processes = cpu_count() - 1
     grid_cells_unsorted = []
+
+    # create tasks and push them into queue
     for idx, row in enumerate(rows):
         one_task = [idx, which_row_cells_within_area_boundaries, (selected_area, row, cell_height, columns, cell_width)]
         task_queue.put(one_task)
@@ -85,7 +87,7 @@ def multi_processing_geometry_boundary_check(selected_area, selected_gdf):
 
     grid_cells_sorted = sorted(grid_cells_unsorted, key=lambda x: x[0])  # sort by index, first entry
 
-    grid = np.array([i[1] for i in grid_cells_sorted])
+    grid = np.array([i[1] for i in grid_cells_sorted])  # np.array easily creates 1 axe array out of list
 
     return grid
 
@@ -95,7 +97,7 @@ def serial_processing_geometry_boundary_check(selected_area, selected_gdf):
 
     # cell tile is one meter in lat/long, use centroid of area x, y values from geopandas for reference
     # latitude (x diff), longitude (y diff)
-    cell_height, cell_width = get_lat_long_decimal_of_cell_by_meter(1, (selected_area.centroid.y, selected_area.centroid.x))
+    cell_height, cell_width = get_long_diff_in_meter(1, (selected_area.centroid.y, selected_area.centroid.x))
 
     rows = sorted(np.arange(ymin, ymax + cell_height, cell_height), reverse=True)  # scan from top to bottom
     columns = np.arange(xmin, xmax + cell_width, cell_width)  # scan from left to right
