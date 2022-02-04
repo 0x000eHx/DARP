@@ -169,7 +169,7 @@ if __name__ == '__main__':
     rows, cols = area_map.shape
     start_points = [(65, 57), (174, 38), (201, 122)]  # trust me, these points are inside the grid
 
-    not_equal_portions = False  # this trigger should be True, if the portions are not equal
+    not_equal_portions = True  # this trigger should be True, if the portions are not equal
 
     if not_equal_portions:
         portions = [0.4, 0.3, 0.3]
@@ -194,7 +194,7 @@ if __name__ == '__main__':
                 print("Problems at following init position: " + str(obstacle))
                 sys.exit(3)
 
-    MaxIter = 80000
+    MaxIter = 8000
     CCvariation = 0.01
     randomLevel = 0.0001
     dcells = 30

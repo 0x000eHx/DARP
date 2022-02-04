@@ -1,5 +1,4 @@
 import pathlib
-
 import numpy as np
 import copy
 import sys
@@ -21,26 +20,12 @@ class DARP:
         self.map_file_name = map_file_name
         self.visualization = visualization  # should the results get presented in pygame
         self.image_export = image_export  # should the DARP result get exported as Image
-        empty_space = []
-
-        # TODO fix this input to be flexible in all dimensions
-        #if nx > ny:
-        #    for j in range(ny, nx):
-        #        for i in range(nx):
-        #            empty_space.append((i, j))
-        #    self.cols = self.rows
-        #elif ny > nx:
-        #    for j in range(nx, ny):
-        #        for i in range(ny):
-        #            empty_space.append((j, i))
-        #    self.rows = self.cols
 
         self.A = np.zeros((self.rows, self.cols))
         self.ob = 0
         self.init_robot_pos = initial_positions
+        empty_space = []  # TODO if extra restricted area is necessary later
         self.GridEnv = self.defineGridEnv(initial_positions, obstacles_positions, empty_space)
-        # print("Given Grid area:")
-        # print(self.GridEnv)
 
         self.MaxIter = MaxIter
         self.CCvariation = CCvariation
@@ -187,7 +172,7 @@ class DARP:
                 iteration += 1
                 if self.visualization:
                     self.assignment_matrix_visualization.placeCells(iteration_number=iteration)
-                time.sleep(0.1)
+                    # time.sleep(0.1)
 
             if iteration >= self.MaxIter:
                 self.MaxIter = self.MaxIter / 2
@@ -226,27 +211,17 @@ class DARP:
         MMnew = currentMetricMatrix * CM * self.generateRandomMatrix() * CC
         return MMnew
 
-    def IsThisAGoalState(self, thresh, connectedRobotRegions):
+    def IsThisAGoalState(self, thresh, connected_robot_regions):
         """
         Determines if the finishing criterion of the DARP algorithm is met.
         :param thresh: Sets the possible difference between the number of tiles per robot and their desired assignment
-        :param connectedRobotRegions: needs array of 'is the tile area of robot x fully connected' or not
+        :param connected_robot_regions: needs array of 'is the tile area of robot x fully connected' or not
         :return: True, if criteria fits; False, if criteria aren't met
         """
-        is_goalstate_met_array = np.full(len(self.init_robot_pos), False)
-
         for idx, r in enumerate(self.init_robot_pos):
-            # the python criterion
-            if np.absolute(self.DesireableAssign[idx] - self.ArrayOfElements[idx]) > thresh or not \
-                    connectedRobotRegions[idx]:
-                is_goalstate_met_array[idx] = False
-            else:
-                is_goalstate_met_array[idx] = True
-
-        if is_goalstate_met_array.all():
-            return True
-        else:
-            return False
+            if np.absolute(self.DesireableAssign[idx] - self.ArrayOfElements[idx]) > thresh or not connected_robot_regions[idx]:
+                return False
+        return True
 
     def update_connectivity(self):
         """

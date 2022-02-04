@@ -40,13 +40,13 @@ class Kruskal(object):
 
                     if not connect4:
                         if (i > 0 and j > 0 and A[i-1][j-1]):
-                            AddToAllEdges(i*self.cols+j, (i-1)*self.cols+j-1, 1)
-                        if (i < rows-1 and j < self.cols-1 and A[i+1][j+1]):
-                            AddToAllEdges(i*self.cols+j, (i+1)*self.cols+j+1, 1)
-                        if (i > rows-1 and j > 0 and A[i+1][j-1]):
-                            AddToAllEdges(i*self.cols+j, (i+1)*self.cols+j-1, 1)
+                            self.AddToAllEdges(i * self.cols + j, (i - 1) * self.cols + j - 1, 1)
+                        if (i < self.rows -1 and j < self.cols-1 and A[i + 1][j + 1]):
+                            self.AddToAllEdges(i * self.cols + j, (i + 1) * self.cols + j + 1, 1)
+                        if (i > self.rows -1 and j > 0 and A[i + 1][j - 1]):
+                            self.AddToAllEdges(i * self.cols + j, (i + 1) * self.cols + j - 1, 1)
                         if (i > 0 and j < self.cols-1 and A[i-1][j+1]):
-                            AddToAllEdges(i*self.cols+j, (i-1)*self.cols+j+1, 1)
+                            self.AddToAllEdges(i * self.cols + j, (i - 1) * self.cols + j + 1, 1)
 
     def AddToAllEdges(self, _from: int, to: int, cost):
         self.allEdges.insert(0, Edge(_from, to, cost))
