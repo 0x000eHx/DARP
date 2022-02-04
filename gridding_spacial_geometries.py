@@ -29,13 +29,13 @@ def get_lat_long_decimal_of_cell_by_meter(meter_distance: int, startpoint_lat_lo
 
 
 def which_row_cells_within_area_boundaries(area, r, cell_height, c, cell_width):
-    grid_row = []
-    for x0 in c:
+    grid_row = np.full(len(c), False)
+    for idx, x0 in enumerate(c):
         x1 = x0 - cell_width
         y1 = r + cell_height
         new_cell = shapely.geometry.box(x0, r, x1, y1)
         if new_cell.within(area):
-            grid_row.append(new_cell)
+            grid_row[idx] = True
         else:
             pass
     return grid_row
@@ -54,8 +54,8 @@ def multi_processing_geometry_boundary_check(selected_area, selected_gdf):
     # latitude (x diff), longitude (y diff)
     cell_height, cell_width = get_lat_long_decimal_of_cell_by_meter(1, (selected_area.centroid.y, selected_area.centroid.x))
 
-    rows = np.arange(ymin, ymax + cell_height, cell_height)
-    columns = np.arange(xmin, xmax + cell_width, cell_width)
+    rows = sorted(np.arange(ymin, ymax + cell_height, cell_height), reverse=True)  # scan from top to bottom
+    columns = np.arange(xmin, xmax + cell_width, cell_width)  # scan from left to right
 
     # Create queues
     task_queue = Queue()
@@ -85,10 +85,7 @@ def multi_processing_geometry_boundary_check(selected_area, selected_gdf):
 
     grid_cells_sorted = sorted(grid_cells_unsorted, key=lambda x: x[0])  # sort by index, first entry
 
-    grid = []
-    for i in grid_cells_sorted:  # extend grid with Polygon Lists  keep relevant ndarrays
-        if len(i[1]) > 0:
-            grid.extend(i[1])
+    grid = np.array([i[1] for i in grid_cells_sorted])
 
     return grid
 
@@ -100,14 +97,17 @@ def serial_processing_geometry_boundary_check(selected_area, selected_gdf):
     # latitude (x diff), longitude (y diff)
     cell_height, cell_width = get_lat_long_decimal_of_cell_by_meter(1, (selected_area.centroid.y, selected_area.centroid.x))
 
-    grid = []
-    for x0 in tqdm(np.arange(xmin, xmax + cell_width, cell_width)):
-        for y0 in np.arange(ymin, ymax + cell_height, cell_height):
+    rows = sorted(np.arange(ymin, ymax + cell_height, cell_height), reverse=True)  # scan from top to bottom
+    columns = np.arange(xmin, xmax + cell_width, cell_width)  # scan from left to right
+
+    grid = np.full((len(rows), len(columns)), False)
+    for xidx, x0 in enumerate(tqdm(columns)):
+        for yidx, y0 in enumerate(rows):
             x1 = x0 - cell_width
             y1 = y0 + cell_height
             new_cell = shapely.geometry.box(x0, y0, x1, y1)
             if new_cell.within(selected_area):
-                grid.append(new_cell)
+                grid[yidx][xidx] = True
             else:
                 pass
     return grid
@@ -121,21 +121,21 @@ if __name__ == '__main__':
     talsperre_gdf_exploded = gdf_talsperre.geometry.explode().tolist()
     max_area_talsperre = max(talsperre_gdf_exploded, key=lambda a: a.area)
 
-    trigger_multiprocessing = True
+    multiprocessing = True
 
-    if trigger_multiprocessing:
+    if multiprocessing:
         grid_cells = multi_processing_geometry_boundary_check(max_area_talsperre, gdf_talsperre)
 
     else:
         grid_cells = serial_processing_geometry_boundary_check(max_area_talsperre, gdf_talsperre)
 
-    # plot talsperre
-    fig, ax = plt.subplots(figsize=(16, 16))
+    # plot talsperre, grid_cells must be a 1 row list of Polygons
+    # fig, ax = plt.subplots(figsize=(16, 16))
 
-    gdf_talsperre.plot(ax=ax, markersize=.1, figsize=(16, 16), cmap='jet')
-    cell_df = gpd.GeoDataFrame(grid_cells, columns=['geometry'], crs=from_epsg(4326))
-    cell_df.plot(ax=ax, facecolor="none", edgecolor='grey')
+    # gdf_talsperre.plot(ax=ax, markersize=.1, figsize=(16, 16), cmap='jet')
+    # cell_df = gpd.GeoDataFrame(grid_cells, columns=['geometry'], crs=from_epsg(4326))
+    # cell_df.plot(ax=ax, facecolor="none", edgecolor='grey')
 
-    plt.show()
+    # plt.show()
 
     pass
