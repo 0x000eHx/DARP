@@ -1,14 +1,11 @@
 import geopandas as gpd
-# import geoplot
-from area import area
-from shapely.geometry import Point
-import pyproj
-from shapely.geometry import shape
-from shapely.ops import transform
-from geographiclib.geodesic import Geodesic
-import matplotlib
-import matplotlib.pyplot as plt
-from functools import partial
+# from shapely.geometry import Point
+# import pyproj
+# from shapely.geometry import shape
+# from shapely.ops import transform
+# import matplotlib
+# import matplotlib.pyplot as plt
+# from functools import partial
 from pathlib import Path
 
 

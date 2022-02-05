@@ -7,6 +7,7 @@ from scipy import ndimage
 from Visualization import darp_area_visualization
 import time
 from matplotlib import pyplot
+from tqdm.auto import tqdm
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -94,20 +95,16 @@ class DARP:
 
     def update(self):
         success = False
-        cancelled = False
         criterionMatrix = np.zeros((self.rows, self.cols))
+        absolut_iterations = 0  # absolute iterations number which were needed to find optimal result
 
-        while self.termThr <= self.dcells and not success and not cancelled:
+        while self.termThr <= self.dcells and not success:
             downThres = (self.Notiles - self.termThr * (len(self.init_robot_pos) - 1)) / (
                     self.Notiles * len(self.init_robot_pos))
             upperThres = (self.Notiles + self.termThr) / (self.Notiles * len(self.init_robot_pos))
 
-            success = True
-
             # main optimization loop
-            iteration = 0
-
-            while iteration <= self.MaxIter and not cancelled:
+            for iteration in tqdm(range(self.MaxIter)):
                 self.assign()
                 ConnectedMultiplierList = np.ones((len(self.init_robot_pos), self.rows, self.cols))
                 ConnectedRobotRegions = np.zeros(len(self.init_robot_pos))
@@ -136,7 +133,8 @@ class DARP:
 
                 if self.IsThisAGoalState(self.termThr, ConnectedRobotRegions):
                     print("\nFinal Assignment Matrix (" + str(iteration) + " Iterations, Tiles per Robot " + str(self.ArrayOfElements) + ")")
-                    # print(self.A)
+                    success = True
+                    absolut_iterations += iteration
                     break
 
                 TotalNegPerc = 0
@@ -174,9 +172,10 @@ class DARP:
                     self.assignment_matrix_visualization.placeCells(iteration_number=iteration)
                     # time.sleep(0.1)
 
-            if iteration >= self.MaxIter:
-                self.MaxIter = self.MaxIter / 2
-                success = False
+            # next iteration of DARP with increased flexibility
+            if not success:
+                absolut_iterations += self.MaxIter
+                self.MaxIter = int(self.MaxIter / 2)
                 self.termThr += 1
 
         self.getBinaryRobotRegions()

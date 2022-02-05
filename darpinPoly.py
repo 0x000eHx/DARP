@@ -1,5 +1,6 @@
-import pathlib
-
+from pathlib import Path
+from gridding_spacial_geometries import multi_processing_geometry_boundary_check, serial_processing_geometry_boundary_check
+import geopandas as gpd
 from darp import DARP
 import numpy as np
 from kruskal import Kruskal
@@ -7,10 +8,9 @@ from CalculateTrajectories import CalculateTrajectories
 from Visualization import visualize_paths
 import sys
 from turns import turns
-from PIL import Image
 
 
-class DARPinPoly(DARP):
+class multiRobotPathPlanner(DARP):
     def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, map_name):
         DARP.__init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, map_name)
 
@@ -114,60 +114,47 @@ class DARPinPoly(DARP):
         return MSTs
 
 
-def get_area_map(path, area=0, obs=-1):
-    """
-    Creates an array from a given png-image(path).
-    :param path: path to the png-image
-    :param area: non-obstacles tiles value; standard is 0
-    :param obs: obstacle tiles value; standard is -1
-    :return: an array of area(0) and obstacle(-1) tiles
-    """
-    le_map = np.array(Image.open(path))
-    ma = np.array(le_map).mean(axis=2) != 0
-    le_map = np.int8(np.zeros(ma.shape))
-    le_map[ma] = area
-    le_map[~ma] = obs
-    return le_map
+def get_area_indices(area, value, inv=False):
+    if inv:
+        return np.concatenate([np.where((area != value))]).T
+    return np.concatenate([np.where((area == value))]).T
 
 
-def get_area_indices(area, value, inv=False, obstacle=-1):
-    """
-    Returns area tiles indices that have value
-    If inv(erted), returns indices that don't have value
-    :param area: array with value and obstacle tiles
-    :param value: searched tiles with value
-    :param inv: if True: search will be inverted and index of non-value tiles will get returned
-    :param obstacle: defines obstacle tiles
-    :return:
-    """
-    try:
-        value = int(value)
-        if inv:
-            return np.concatenate([np.where((area != value))]).T
-        return np.concatenate([np.where((area == value))]).T
-    except:
-        mask = area == value[0]
-        if inv:
-            mask = area != value[0]
-        for v in value[1:]:
-            if inv:
-                mask &= area != v
-            else:
-                mask |= area == v
-        mask &= area != obstacle
-        return np.concatenate([np.where(mask)]).T
+def get_random_start_points(number_of_start_points: int, area_array: np.ndarray, obstacle=False):
+    start_coordinates = []
+
+    for i in range(number_of_start_points):
+        rows, cols = area_array.shape
+        random_row = np.random.randint(0, rows)
+
+        for ix, column in enumerate(area_array[random_row]):
+            if area_array[random_row][ix]:
+                start_coordinates.append((random_row, ix))
+                break
+
+    return start_coordinates
 
 
 if __name__ == '__main__':
 
-    map_file_name = "TalsperreMalter_klein1.png"
-    map_path = pathlib.Path("test_maps", map_file_name)
+    talsperre_geojsonfile = Path("Talsperren_einzeln_geojson_files", "Talsperre Malter.geojson")
+    gdf_talsperre = gpd.read_file(talsperre_geojsonfile)
 
-    area_map = get_area_map(map_path)
-    obstacles_positions = get_area_indices(area_map, 0, True)
+    talsperre_gdf_exploded = gdf_talsperre.geometry.explode().tolist()
+    max_area_talsperre = max(talsperre_gdf_exploded, key=lambda a: a.area)
 
-    rows, cols = area_map.shape
-    start_points = [(65, 57), (174, 38), (201, 122)]  # trust me, these points are inside the grid
+    multiprocessing = True
+
+    if multiprocessing:
+        grid_cells = multi_processing_geometry_boundary_check(max_area_talsperre, gdf_talsperre)
+
+    else:
+        grid_cells = serial_processing_geometry_boundary_check(max_area_talsperre, gdf_talsperre)
+
+    obstacles_positions = get_area_indices(grid_cells, value=False)
+
+    rows, cols = grid_cells.shape
+    start_points = get_random_start_points(3, grid_cells)
 
     not_equal_portions = True  # this trigger should be True, if the portions are not equal
 
@@ -187,14 +174,15 @@ if __name__ == '__main__':
         print("Sum of portions should be equal to 1.")
         sys.exit(2)
 
-    for position in start_points:
-        for obstacle in obstacles_positions:
-            if position[0] == obstacle[0] and position[1] == obstacle[1]:
-                print("Initial robot start position should not be on obstacle.")
-                print("Problems at following init position: " + str(obstacle))
-                sys.exit(3)
+    # TODO fix startpoint sanity check and move to DARP
+    # for start_point in start_points:
+    #    transformed = np.array(start_point).T
+    #    if transformed in obstacles_positions:
+    #        print("Initial robot start position should not be on obstacle.")
+    #        print("Problems at following init position: " + str(start_point))
+    #        sys.exit(3)
 
-    MaxIter = 8000
+    MaxIter = 10000
     CCvariation = 0.01
     randomLevel = 0.0001
     dcells = 30
@@ -208,4 +196,4 @@ if __name__ == '__main__':
     print("Initial Robots' positions", start_points)
     print("Portions for each Robot:", portions, "\n")
 
-    poly = DARPinPoly(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize, image_export, map_path.stem)
+    poly = multiRobotPathPlanner(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize, image_export, talsperre_geojsonfile.stem)
