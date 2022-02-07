@@ -30,7 +30,7 @@ class DARP:
         self.dcells = dcells
         self.importance = importance
         self.notEqualPortions = notEqualPortions
-        self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols))
+        self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=np.uint8)
         self.BinaryRobotRegions = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=bool)
 
         # If user has not defined custom portions divide area equally for all drones
@@ -100,7 +100,7 @@ class DARP:
             for iteration in tqdm(range(self.MaxIter)):
                 self.assign()
                 ConnectedMultiplierList = np.ones((len(self.init_robot_pos), self.rows, self.cols))
-                ConnectedRobotRegions = np.zeros(len(self.init_robot_pos))
+                ConnectedRobotRegions = np.zeros(len(self.init_robot_pos), dtype=np.bool)
                 plainErrors = np.zeros((len(self.init_robot_pos)))
                 divFairError = np.zeros((len(self.init_robot_pos)))
 
@@ -108,7 +108,7 @@ class DARP:
                     ConnectedMultiplier = np.ones((self.rows, self.cols))
                     ConnectedRobotRegions[idx] = True
                     self.update_connectivity()
-                    image = np.uint8(self.connectivity[idx, :, :])
+                    image = self.connectivity[idx, :, :]
                     num_labels, labels_im = cv2.connectedComponents(image, connectivity=4)
                     if num_labels > 2:
                         ConnectedRobotRegions[idx] = False
@@ -265,6 +265,7 @@ class DARP:
                 # if obstacle tile
                 elif self.GridEnv[i, j] == -2:
                     self.A[i, j] = len(self.init_robot_pos)
+        pass
 
     # Construct Assignment Matrix
     def construct_Assignment_Matrix(self):
@@ -290,6 +291,7 @@ class DARP:
         AllDistances = np.zeros((len(self.init_robot_pos), self.rows, self.cols))
         TilesImportance = np.zeros((len(self.init_robot_pos), self.rows, self.cols))
 
+        # TODO OPTIMIZE THIS MONSTER
         for x in range(self.rows):
             for y in range(self.cols):
                 tempSum = 0
