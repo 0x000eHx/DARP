@@ -1,6 +1,5 @@
 from pathlib import Path
 from gridding import get_grid_array
-import geopandas as gpd
 from darp import DARP
 import numpy as np
 from kruskal import Kruskal
@@ -8,15 +7,19 @@ from CalculateTrajectories import CalculateTrajectories
 from Visualization import visualize_paths
 import sys
 from turns import turns
+import matplotlib.pyplot as plt
 
 
 class multiRobotPathPlanner(DARP):
-    def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, map_name):
-        DARP.__init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, map_name)
+    def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, export_file_name):
+        DARP.__init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization)
 
         if not self.success:
             print("DARP did not manage to find a solution for the given configuration!")
             sys.exit(4)
+
+        if image_export:
+            to_image(export_file_name, self.A)
 
         mode_to_drone_turns = dict()
 
@@ -135,14 +138,22 @@ def get_random_start_points(number_of_start_points: int, area_array: np.ndarray,
     return start_coordinates
 
 
+def to_image(filename: str, optimal_assignment_array):
+
+    file_path = Path('result_export', filename + ".jpg")
+
+    plt.imsave(file_path, optimal_assignment_array)
+
+
 if __name__ == '__main__':
 
-    grid_cells = get_grid_array("Talsperre Malter.geojson", 1, multiprocessing=True)
+    dam_file_name = "Talsperre Malter.geojson"
+    grid_cells = get_grid_array(dam_file_name, 3, multiprocessing=True)
 
     obstacles_positions = get_area_indices(grid_cells, value=False)
 
     rows, cols = grid_cells.shape
-    start_points = get_random_start_points(3, grid_cells)
+    start_points = [(230, 180), (243, 178), (212, 176)]  # get_random_start_points(3, grid_cells)
 
     not_equal_portions = True  # this trigger should be True, if the portions are not equal
 
@@ -178,10 +189,11 @@ if __name__ == '__main__':
     visualize = False
     image_export = True
 
+    print("Following dam file will be processed: " + dam_file_name)
     print("\nInitial Conditions Defined:")
     print("Grid Dimensions:", rows, cols)
     print("Robot Number:", len(start_points))
     print("Initial Robots' positions", start_points)
     print("Portions for each Robot:", portions, "\n")
 
-    poly = multiRobotPathPlanner(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize, image_export, talsperre_geojsonfile.stem)
+    multiRobotPathPlanner(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize, image_export, dam_file_name)

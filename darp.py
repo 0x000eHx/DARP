@@ -1,4 +1,3 @@
-import pathlib
 import numpy as np
 import copy
 import sys
@@ -6,7 +5,6 @@ import cv2
 from scipy import ndimage
 from Visualization import darp_area_visualization
 import time
-from matplotlib import pyplot
 from tqdm.auto import tqdm
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -14,13 +12,11 @@ np.set_printoptions(threshold=sys.maxsize)
 
 class DARP:
     def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions,
-                 initial_positions, portions, obstacles_positions, visualization, image_export, map_file_name):
+                 initial_positions, portions, obstacles_positions, visualization):
         self.rows = nx
         self.cols = ny
         self.effectiveSize = 0
-        self.map_file_name = map_file_name
         self.visualization = visualization  # should the results get presented in pygame
-        self.image_export = image_export  # should the DARP result get exported as Image
 
         self.A = np.zeros((self.rows, self.cols))
         self.ob = 0
@@ -63,9 +59,6 @@ class DARP:
             self.assignment_matrix_visualization = darp_area_visualization(self.A, len(self.init_robot_pos), self.color, self.init_robot_pos)
 
         self.success = self.update()
-
-        if self.image_export:
-            self.export_A_to_image(self.A)
 
     def defineGridEnv(self, init_robot_pos, obstacles_positions, empty_space):
         """
@@ -252,6 +245,7 @@ class DARP:
             self.BWlist[idx, robot[0], robot[1]] = 1
 
         self.ArrayOfElements = np.zeros(len(self.init_robot_pos))
+
         for i in range(self.rows):
             for j in range(self.cols):
                 # if non obstacle tile
@@ -259,8 +253,8 @@ class DARP:
                     minV = self.MetricMatrix[0, i, j]  # finding minimal value from here on (argmin)
                     indMin = 0  # number of assigned robot of tile (i,j)
                     for idx, robot in enumerate(self.init_robot_pos):
-                        if self.MetricMatrix[
-                            idx, i, j] < minV:  # the actual decision making if distance of tile is lower for one robo startpoint than to another
+                        if self.MetricMatrix[idx, i, j] < minV:
+                            # the actual decision making if distance of tile is lower for one robo startpoint than to another
                             minV = self.MetricMatrix[idx, i, j]
                             indMin = idx
 
@@ -377,14 +371,3 @@ class DARP:
 
         return distRobot
 
-    def export_A_to_image(self, optimal_assignment_array):
-
-        file_path = pathlib.Path('result_export', str(self.map_file_name) + ".jpg")
-
-        # im = Image.fromarray(optimal_assignment_array, "RGB")
-        # im.save(file_path, 'jpeg')
-
-        pyplot.imsave(file_path, optimal_assignment_array)
-        # image.imsave(file_path, optimal_assignment_array)
-
-        pass

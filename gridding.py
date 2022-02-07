@@ -10,7 +10,8 @@ from multiprocessing import Process, Queue, cpu_count
 import queue
 
 
-def get_long_diff_in_meter(grid_size_meter: int, startpoint_lat_long_tuple: tuple):
+def get_long_diff_in_meter(grid_size_meter: float, startpoint_lat_long_tuple: tuple):
+
     earth_radius = 6378137  # earth radius, sphere
 
     # Coordinate offsets in radians
@@ -29,6 +30,7 @@ def get_long_diff_in_meter(grid_size_meter: int, startpoint_lat_long_tuple: tupl
 
 
 def which_row_cells_within_area_boundaries(area, r, cell_height, c, cell_width):
+
     grid_row = np.full(len(c), False)
     for idx, x0 in enumerate(c):
         x1 = x0 - cell_width
@@ -48,6 +50,7 @@ def worker(input_queue, output_queue):
 
 
 def processing_geometry_boundary_check(grid_size, selected_area, selected_gdf, multiprocessing=True):
+
     xmin, ymin, xmax, ymax = selected_gdf.total_bounds
 
     # cell tile is one meter in lat/long, use centroid of area x, y values from geopandas for reference
@@ -105,7 +108,7 @@ def processing_geometry_boundary_check(grid_size, selected_area, selected_gdf, m
     return grid
 
 
-def get_grid_array(dam_file_name, grid_size_meter, multiprocessing=True):
+def get_grid_array(dam_file_name: str, grid_size_meter: float, multiprocessing=True):
 
     dam_geojson_filepath = Path("dams_single_geojsons", dam_file_name)
     gdf_dam = gpd.read_file(dam_geojson_filepath)
@@ -121,19 +124,3 @@ def get_grid_array(dam_file_name, grid_size_meter, multiprocessing=True):
 
     return grid
 
-
-if __name__ == '__main__':
-
-    grid_bool_array = get_grid_array("Talsperre Malter.geojson", 1)
-
-    # plot dams; grid_cells must be a 1 row list of Polygons
-    # fig, ax = plt.subplots(figsize=(16, 16))
-
-    # if properly done this will take matplotlib some time to render
-    # gdf_dam.plot(ax=ax, markersize=.1, figsize=(16, 16), cmap='jet')
-    # cell_df = gpd.GeoDataFrame(grid_cells, columns=['geometry'], crs=from_epsg(4326))
-    # cell_df.plot(ax=ax, facecolor="none", edgecolor='grey')
-
-    # plt.show()
-
-    pass
