@@ -1,5 +1,5 @@
 from pathlib import Path
-from gridding_spacial_geometries import multi_processing_geometry_boundary_check, serial_processing_geometry_boundary_check
+from gridding import get_grid_array
 import geopandas as gpd
 from darp import DARP
 import numpy as np
@@ -137,19 +137,7 @@ def get_random_start_points(number_of_start_points: int, area_array: np.ndarray,
 
 if __name__ == '__main__':
 
-    talsperre_geojsonfile = Path("Talsperren_einzeln_geojson_files", "Talsperre Malter.geojson")
-    gdf_talsperre = gpd.read_file(talsperre_geojsonfile)
-
-    talsperre_gdf_exploded = gdf_talsperre.geometry.explode().tolist()
-    max_area_talsperre = max(talsperre_gdf_exploded, key=lambda a: a.area)
-
-    multiprocessing = True
-
-    if multiprocessing:
-        grid_cells = multi_processing_geometry_boundary_check(max_area_talsperre, gdf_talsperre)
-
-    else:
-        grid_cells = serial_processing_geometry_boundary_check(max_area_talsperre, gdf_talsperre)
+    grid_cells = get_grid_array("Talsperre Malter.geojson", 1, multiprocessing=True)
 
     obstacles_positions = get_area_indices(grid_cells, value=False)
 
@@ -159,7 +147,7 @@ if __name__ == '__main__':
     not_equal_portions = True  # this trigger should be True, if the portions are not equal
 
     if not_equal_portions:
-        portions = [0.4, 0.3, 0.3]
+        portions = [0.3, 0.2, 0.5]
     else:
         portions = []
         for idx, drone in enumerate(start_points):
