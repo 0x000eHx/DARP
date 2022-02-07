@@ -118,9 +118,9 @@ def get_grid_array(dam_file_name: str, grid_size_meter: float, multiprocessing=T
 
     # TODO check grid_size_meter for appropriate value
     if multiprocessing:
-        grid = processing_geometry_boundary_check(grid_size_meter, dam_biggest_water_area, gdf_dam, multiprocessing=True)
+        grid = processing_geometry_boundary_check(grid_size_meter, dam_biggest_water_area, gdf_dam, multiprocessing=multiprocessing)
     else:
-        grid = processing_geometry_boundary_check(1, dam_biggest_water_area, gdf_dam, multiprocessing=False)
+        grid = processing_geometry_boundary_check(grid_size_meter, dam_biggest_water_area, gdf_dam, multiprocessing=multiprocessing)
 
     return grid
 
