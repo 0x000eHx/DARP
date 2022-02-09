@@ -1,4 +1,4 @@
-import matplotlib.pyplot
+# import matplotlib.pyplot
 import numpy as np
 import copy
 import sys
@@ -11,7 +11,8 @@ import imageio
 from PIL import Image
 from pathlib import Path
 import os
-import io
+import cProfile
+from pstats import SortKey
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -71,7 +72,7 @@ class DARP:
             movie_file_path = Path("result_export", str(self.import_geometry_file_name).replace(" " and ".geojson", "") + "-DARP_animation.gif")
             if not movie_file_path.parent.exists():
                 os.makedirs(movie_file_path.parent)
-            self.writer = imageio.get_writer(movie_file_path, mode='i', duration=0.3)
+            self.gif_writer = imageio.get_writer(movie_file_path, mode='i', duration=0.3)
 
         self.success = self.update()
 
@@ -101,7 +102,7 @@ class DARP:
 
         return local_grid_env
 
-    def assignment_matrix_video_export(self, iteration):
+    def video_export_add_frame(self, iteration):
 
         framerate = 2
         write_frame = (iteration % framerate) == 0
@@ -109,13 +110,7 @@ class DARP:
         if write_frame or iteration == 0:
             uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))
             temp_img = Image.fromarray(uint8_array)
-            self.writer.append_data(np.asarray(temp_img))
-            # temp_file_path = Path("result_export", "export.png")
-            # if not temp_file_path.parent.exists():
-            #     os.makedirs(temp_file_path.parent)
-            # matplotlib.pyplot.imsave(temp_file_path, self.A)
-            # image = imageio.imread(temp_file_path)
-
+            self.gif_writer.append_data(np.asarray(temp_img))
 
     def update(self):
         success = False
@@ -132,7 +127,7 @@ class DARP:
                 self.assign()
 
                 if self.video_export:
-                    self.assignment_matrix_video_export(iteration)
+                    self.video_export_add_frame(iteration)
 
                 ConnectedMultiplierList = np.ones((len(self.init_robot_pos), self.rows, self.cols))
                 ConnectedRobotRegions = np.zeros(len(self.init_robot_pos), dtype=np.bool)
