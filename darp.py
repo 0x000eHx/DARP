@@ -1,3 +1,4 @@
+import matplotlib.pyplot
 import numpy as np
 import copy
 import sys
@@ -6,17 +7,24 @@ from scipy import ndimage
 from Visualization import darp_area_visualization
 import time
 from tqdm.auto import tqdm
+import imageio
+from PIL import Image
+from pathlib import Path
+import os
+import io
 
 np.set_printoptions(threshold=sys.maxsize)
 
 
 class DARP:
     def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions,
-                 initial_positions, portions, obstacles_positions, visualization):
+                 initial_positions, portions, obstacles_positions, visualization, video_export, import_file_name):
         self.rows = nx
         self.cols = ny
         self.effectiveSize = 0
         self.visualization = visualization  # should the results get presented in pygame
+        self.video_export = video_export  # should steps of changes in the assignment matrix get written down
+        self.import_geometry_file_name = import_file_name
 
         self.A = np.zeros((self.rows, self.cols))
         self.ob = 0
@@ -58,6 +66,13 @@ class DARP:
         if self.visualization:
             self.assignment_matrix_visualization = darp_area_visualization(self.A, len(self.init_robot_pos), self.color, self.init_robot_pos)
 
+        if self.video_export:
+            # timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+            movie_file_path = Path("result_export", str(self.import_geometry_file_name).replace(" " and ".geojson", "") + "-DARP_animation.gif")
+            if not movie_file_path.parent.exists():
+                os.makedirs(movie_file_path.parent)
+            self.writer = imageio.get_writer(movie_file_path, mode='i', duration=0.3)
+
         self.success = self.update()
 
     def defineGridEnv(self, init_robot_pos, obstacles_positions, empty_space):
@@ -86,6 +101,22 @@ class DARP:
 
         return local_grid_env
 
+    def assignment_matrix_video_export(self, iteration):
+
+        framerate = 2
+        write_frame = (iteration % framerate) == 0
+
+        if write_frame or iteration == 0:
+            uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))
+            temp_img = Image.fromarray(uint8_array)
+            self.writer.append_data(np.asarray(temp_img))
+            # temp_file_path = Path("result_export", "export.png")
+            # if not temp_file_path.parent.exists():
+            #     os.makedirs(temp_file_path.parent)
+            # matplotlib.pyplot.imsave(temp_file_path, self.A)
+            # image = imageio.imread(temp_file_path)
+
+
     def update(self):
         success = False
         criterionMatrix = np.zeros((self.rows, self.cols))
@@ -99,6 +130,10 @@ class DARP:
             # main optimization loop
             for iteration in tqdm(range(self.MaxIter)):
                 self.assign()
+
+                if self.video_export:
+                    self.assignment_matrix_video_export(iteration)
+
                 ConnectedMultiplierList = np.ones((len(self.init_robot_pos), self.rows, self.cols))
                 ConnectedRobotRegions = np.zeros(len(self.init_robot_pos), dtype=np.bool)
                 plainErrors = np.zeros((len(self.init_robot_pos)))

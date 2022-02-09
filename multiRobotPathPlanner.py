@@ -8,18 +8,19 @@ from Visualization import visualize_paths
 import sys
 from turns import turns
 import matplotlib.pyplot as plt
+import os
 
 
 class multiRobotPathPlanner(DARP):
-    def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, export_file_name):
-        DARP.__init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization)
+    def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, import_file_name, video_export):
+        DARP.__init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, video_export, import_file_name)
 
         if not self.success:
             print("DARP did not manage to find a solution for the given configuration!")
             sys.exit(4)
 
         if image_export:
-            to_image(export_file_name, self.A)
+            to_image(import_file_name, self.A)
 
         mode_to_drone_turns = dict()
 
@@ -141,8 +142,10 @@ def get_random_start_points(number_of_start_points: int, area_array: np.ndarray,
 def to_image(filename: str, optimal_assignment_array):
 
     file_path = Path('result_export', filename + ".jpg")
+    if not file_path.parent.exists():
+        os.makedirs(file_path.parent)
 
-    plt.imsave(file_path, optimal_assignment_array)
+    plt.imsave(file_path, optimal_assignment_array, dpi=100)
 
 
 if __name__ == '__main__':
@@ -153,7 +156,7 @@ if __name__ == '__main__':
     obstacles_positions = get_area_indices(grid_cells, value=False)
 
     rows, cols = grid_cells.shape
-    start_points = [(230, 180), (243, 178), (212, 176)]  # get_random_start_points(3, grid_cells)
+    start_points = get_random_start_points(3, grid_cells)  # [(230, 180), (243, 178), (212, 176)] damned start points
 
     not_equal_portions = True  # this trigger should be True, if the portions are not equal
 
@@ -181,13 +184,14 @@ if __name__ == '__main__':
     #        print("Problems at following init position: " + str(start_point))
     #        sys.exit(3)
 
-    MaxIter = 10000
+    MaxIter = 80000
     CCvariation = 0.01
-    randomLevel = 0.0001
-    dcells = 30
-    importance = False
+    randomLevel = 0.0005
+    dcells = 100
+    importance = True
     visualize = False
-    image_export = True
+    image_export_final_assignment_matrix = True
+    video_export_assignment_matrix_changes = True
 
     print("Following dam file will be processed: " + dam_file_name)
     print("\nInitial Conditions Defined:")
@@ -196,4 +200,4 @@ if __name__ == '__main__':
     print("Initial Robots' positions", start_points)
     print("Portions for each Robot:", portions, "\n")
 
-    multiRobotPathPlanner(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize, image_export, dam_file_name)
+    multiRobotPathPlanner(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize, image_export_final_assignment_matrix, dam_file_name, video_export_assignment_matrix_changes)
