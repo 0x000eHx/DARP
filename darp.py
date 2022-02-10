@@ -11,54 +11,79 @@ import imageio
 from PIL import Image
 from pathlib import Path
 import os
-from pyinstrument import Profiler
+# from pyinstrument import Profiler
 
 np.set_printoptions(threshold=sys.maxsize)
 
 
+def check_start_positions(start_positions: list[tuple], area: np.array):
+
+    for position in start_positions:
+        # TODO check if there are obstacle cells (False) around start position cell as area boundary check
+        if not area[position]:
+            print("Start position: " + str(position) + " is not inside the given area!")
+            return False
+
+    return True
+
+
+def check_portions(start_positions, portions):
+
+    if len(start_positions) != len(portions):
+        print("Number of portions and robot start positions don't match. One portion should be defined for each drone.")
+        return False
+
+    s = sum(portions)
+    if abs(s - 1) >= 0.0001:
+        print("Sum of portions has to be 1!")
+        return False
+
+    return True
+
+
 class DARP:
-    def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions,
-                 initial_positions, portions, obstacles_positions, visualization, video_export, import_file_name):
+    def __init__(self, area_bool: np.ndarray, max_iter: np.uint32, cc_variation: float, random_level: float, dynamic_cells: np.uint32, importance: bool, start_positions: list[tuple], portions: list, visualization: bool, video_export: bool, import_file_name: str):
 
         # start performance analyse
         # profiler = Profiler()
         # profiler.start()
         ###########################
 
-        self.rows = nx
-        self.cols = ny
+        # check the robot start positions, is any of them situated on obstacle tile?
+        if not check_start_positions(start_positions, area_bool):
+            print("Aborting after start positions check")
+            sys.exit(1)
+        else:
+            print("Robot start positions are inside given area, continuing...")
+            self.init_robot_pos = start_positions
+
+        # check the portions, are there enough so every start position has one?
+        if not check_portions(start_positions, portions):
+            print("Aborting after portion check")
+            sys.exit(2)
+        else:
+            print("Portions and number compared to robot start positions work out, continuing...")
+            self.Rportions = portions
+
+        self.rows, self.cols = area_bool.shape
         self.effectiveSize = 0
+
         self.visualization = visualization  # should the results get presented in pygame
         self.video_export = video_export  # should steps of changes in the assignment matrix get written down
         self.import_geometry_file_name = import_file_name
 
         self.A = np.zeros((self.rows, self.cols))
-        self.ob = 0
-        self.init_robot_pos = initial_positions
+
         empty_space = []  # TODO if extra restricted area is necessary later
-        self.GridEnv = self.defineGridEnv(initial_positions, obstacles_positions, empty_space)
+        self.GridEnv, self.Obstacle_Number = self.defineGridEnv(area_bool, empty_space)
 
-        self.MaxIter = MaxIter
-        self.CCvariation = CCvariation
-        self.randomLevel = randomLevel
-        self.dcells = dcells
-        self.importance = importance
-        self.notEqualPortions = notEqualPortions
+        self.MaxIter = max_iter
+        self.CC_variation = cc_variation
+        self.randomLevel = random_level
+        self.Dynamic_Cells = dynamic_cells
+        self.Importance = importance
         self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=np.uint8)
-        self.BinaryRobotRegions = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=bool)
-
-        # If user has not defined custom portions divide area equally for all drones
-        self.Rportions = np.zeros(len(self.init_robot_pos))
-        if notEqualPortions:
-            if len(self.init_robot_pos) != len(portions):
-                print("notEqualPortions was set to True, but portions number and initial robot number don't match")
-                sys.exit(5)
-            else:
-                for idx, robot in enumerate(self.init_robot_pos):
-                    self.Rportions[idx] = portions[idx]
-        else:
-            for idx, robot in enumerate(self.init_robot_pos):
-                self.Rportions[idx] = 1.0 / len(self.init_robot_pos)
+        self.BinaryRobotRegions = np.full((len(self.init_robot_pos), self.rows, self.cols), False, dtype=bool)
 
         self.AllDistances, self.termThr, self.Notiles, self.DesireableAssign, self.TilesImportance, self.MinimumImportance, self.MaximumImportance = self.construct_Assignment_Matrix()
 
@@ -88,31 +113,25 @@ class DARP:
 
         self.success = self.update()
 
-    def defineGridEnv(self, init_robot_pos, obstacles_positions, empty_space):
-        """
-        Defines and returns the GridEnv(iroment) array for later use.
-        All tiles except obstacles, empty_space, initial robo start points will have the value -1.
-        :param init_robot_pos: The initial robot start points (array) - tile value will be their array.index number
-        :param obstacles_positions: The given array of obstacle tiles. obstacle tile value is -2
-        :param empty_space: The area/tiles positions (array) which are defined as obstacle tiles
-        :return: The prepared GridEnv
-        """
+    def defineGridEnv(self, area: np.ndarray, empty_space):
 
         local_grid_env = np.full(shape=(self.rows, self.cols), fill_value=-1)  # create non obstacle map with value -1
 
         # initial robot tiles will have their array.index as value
-        for idx, robot in enumerate(init_robot_pos):
-            local_grid_env[robot] = idx
-            self.A[robot] = idx
+        for idx, position in enumerate(self.init_robot_pos):
+            local_grid_env[position] = idx
+            self.A[position] = idx
 
         # obstacle tiles value is -2
-        self.ob = len(obstacles_positions)
-        for idx, obstacle_pos in enumerate(obstacles_positions):
-            local_grid_env[obstacle_pos[0], obstacle_pos[1]] = -2
+        obstacle_positions = np.where(area == False)
+        obstacle_num = len(obstacle_positions[0])
+        # listOfCoordinates = list(zip(obstacle_positions[0], obstacle_positions[1]))
+        local_grid_env[obstacle_positions] = -2
+
         for idx, es_pos in enumerate(empty_space):
             local_grid_env[es_pos] = -2
 
-        return local_grid_env
+        return local_grid_env, obstacle_num
 
     def video_export_add_frame(self, iteration):
 
@@ -129,7 +148,7 @@ class DARP:
         criterionMatrix = np.zeros((self.rows, self.cols))
         absolut_iterations = 0  # absolute iterations number which were needed to find optimal result
 
-        while self.termThr <= self.dcells and not success:
+        while self.termThr <= self.Dynamic_Cells and not success:
             downThres = (self.Notiles - self.termThr * (len(self.init_robot_pos) - 1)) / (
                     self.Notiles * len(self.init_robot_pos))
             upperThres = (self.Notiles + self.termThr) / (self.Notiles * len(self.init_robot_pos))
@@ -148,7 +167,7 @@ class DARP:
                     self.video_export_add_frame(iteration)
 
                 ConnectedMultiplierList = np.ones((len(self.init_robot_pos), self.rows, self.cols))
-                ConnectedRobotRegions = np.zeros(len(self.init_robot_pos), dtype=np.bool)
+                ConnectedRobotRegions = np.full(len(self.init_robot_pos), False, dtype=bool)
                 plainErrors = np.zeros((len(self.init_robot_pos)))
                 divFairError = np.zeros((len(self.init_robot_pos)))
 
@@ -156,8 +175,7 @@ class DARP:
                     ConnectedMultiplier = np.ones((self.rows, self.cols))
                     ConnectedRobotRegions[idx] = True
                     self.update_connectivity()
-                    image = self.connectivity[idx, :, :]
-                    num_labels, labels_im = cv2.connectedComponents(image, connectivity=4)
+                    num_labels, labels_im = cv2.connectedComponents(self.connectivity[idx, :, :], connectivity=4)
                     if num_labels > 2:
                         ConnectedRobotRegions[idx] = False
                         BinaryRobot, BinaryNonRobot = self.constructBinaryImages(labels_im, robot)
@@ -318,12 +336,11 @@ class DARP:
                 # if obstacle tile
                 elif self.GridEnv[i, j] == -2:
                     self.A[i, j] = len(self.init_robot_pos)
-        pass
 
-    # Construct Assignment Matrix
     def construct_Assignment_Matrix(self):
+
         Notiles = self.rows * self.cols
-        self.effectiveSize = Notiles - len(self.init_robot_pos) - self.ob
+        self.effectiveSize = Notiles - len(self.init_robot_pos) - self.Obstacle_Number
         print("Effective number of tiles: " + str(self.effectiveSize))
         termThr = 0
 
@@ -372,7 +389,7 @@ class DARP:
                                  smallerthan0):
         """
         Generates a new correction multiplier matrix.
-        If self.importance is True: TilesImportance influence is calculated.
+        If self.Importance is True: TilesImportance influence is calculated.
         :param TilesImportance:
         :param MinimumImportance:
         :param MaximumImportance:
@@ -380,7 +397,7 @@ class DARP:
         :param smallerthan0:
         :return: returnCrit
         """
-        if self.importance:
+        if self.Importance:
             if smallerthan0:
                 returnCrit = (TilesImportance - MinimumImportance) * (
                         (correctionMult - 1) / (MaximumImportance - MinimumImportance)) + 1
@@ -403,7 +420,7 @@ class DARP:
         MaxV = np.max(returnM)
         MinV = np.min(returnM)
 
-        returnM = (returnM - MinV) * ((2 * self.CCvariation) / (MaxV - MinV)) + (1 - self.CCvariation)
+        returnM = (returnM - MinV) * ((2 * self.CC_variation) / (MaxV - MinV)) + (1 - self.CC_variation)
 
         return returnM
 

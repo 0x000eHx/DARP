@@ -1,10 +1,8 @@
 import geopandas as gpd
 from pathlib import Path
 from tqdm.auto import tqdm
-import matplotlib.pyplot as plt
 import shapely
 import numpy as np
-from fiona.crs import from_epsg
 import math
 from multiprocessing import Process, Queue, cpu_count
 import queue
