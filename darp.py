@@ -5,14 +5,13 @@ import sys
 import cv2
 from scipy import ndimage
 from Visualization import darp_area_visualization
-import time
+# import time
 from tqdm.auto import tqdm
 import imageio
 from PIL import Image
 from pathlib import Path
 import os
-import cProfile
-from pstats import SortKey
+from pyinstrument import Profiler
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -20,6 +19,12 @@ np.set_printoptions(threshold=sys.maxsize)
 class DARP:
     def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions,
                  initial_positions, portions, obstacles_positions, visualization, video_export, import_file_name):
+
+        # start performance analyse
+        # profiler = Profiler()
+        # profiler.start()
+        ###########################
+
         self.rows = nx
         self.cols = ny
         self.effectiveSize = 0
@@ -56,6 +61,7 @@ class DARP:
                 self.Rportions[idx] = 1.0 / len(self.init_robot_pos)
 
         self.AllDistances, self.termThr, self.Notiles, self.DesireableAssign, self.TilesImportance, self.MinimumImportance, self.MaximumImportance = self.construct_Assignment_Matrix()
+
         self.MetricMatrix = copy.deepcopy(self.AllDistances)
         self.BWlist = np.zeros((len(self.init_robot_pos), self.rows, self.cols))
         self.ArrayOfElements = np.zeros(len(self.init_robot_pos))
@@ -63,6 +69,12 @@ class DARP:
         self.color = []
         for robot in self.init_robot_pos:
             self.color.append(list(np.random.choice(range(256), size=3)))
+
+        # End performance analyses
+        # profiler.stop()
+        # profiler.print(color=True, show_all=True)
+        # profiler.open_in_browser()
+        ##########################
 
         if self.visualization:
             self.assignment_matrix_visualization = darp_area_visualization(self.A, len(self.init_robot_pos), self.color, self.init_robot_pos)
@@ -124,6 +136,12 @@ class DARP:
 
             # main optimization loop
             for iteration in tqdm(range(self.MaxIter)):
+
+                # start performance analyse
+                # profiler = Profiler()
+                # profiler.start()
+                ###########################
+
                 self.assign()
 
                 if self.video_export:
@@ -189,6 +207,11 @@ class DARP:
                         criterionMatrix,
                         self.MetricMatrix[idx],
                         ConnectedMultiplierList[idx, :, :])
+
+                # End performance analyses
+                # profiler.stop()
+                # profiler.open_in_browser()
+                ##########################
 
                 iteration += 1
                 if self.visualization:

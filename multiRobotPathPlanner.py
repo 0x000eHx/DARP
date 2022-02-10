@@ -151,14 +151,16 @@ def to_image(filename: str, optimal_assignment_array):
 if __name__ == '__main__':
 
     dam_file_name = "Talsperre Malter.geojson"
-    grid_cells = get_grid_array(dam_file_name, 3, multiprocessing=True)
+
+    grid_cells = get_grid_array(dam_file_name, 3, multiprocessing=True)  #cProfile.run('', 'result_export/restats', sort=SortKey.TIME)
 
     obstacles_positions = get_area_indices(grid_cells, value=False)
 
     rows, cols = grid_cells.shape
     start_points = get_random_start_points(3, grid_cells)  # [(230, 180), (243, 178), (212, 176)] damned start points
+    # [(63, 217), (113, 195), (722, 326)] better
 
-    not_equal_portions = True  # this trigger should be True, if the portions are not equal
+    not_equal_portions = False  # this trigger should be True, if the portions are not equal
 
     if not_equal_portions:
         portions = [0.3, 0.2, 0.5]
@@ -186,9 +188,9 @@ if __name__ == '__main__':
 
     MaxIter = 80000
     CCvariation = 0.01
-    randomLevel = 0.0005
-    dcells = 100
-    importance = True
+    randomLevel = 0.0001
+    dcells = 30
+    importance = False
     visualize = False
     image_export_final_assignment_matrix = True
     video_export_assignment_matrix_changes = True
