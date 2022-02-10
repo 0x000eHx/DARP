@@ -12,8 +12,24 @@ import os
 
 
 class multiRobotPathPlanner(DARP):
-    def __init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, image_export, import_file_name, video_export):
-        DARP.__init__(self, nx, ny, MaxIter, CCvariation, randomLevel, dcells, importance, notEqualPortions, initial_positions, portions, obstacles_positions, visualization, video_export, import_file_name)
+    def __init__(self, area, grid_sides, max_iter, cc_variation, random_level, dynamic_cells, importance, start_positions, portions,
+                 visualization, image_export, import_file_name, video_export):
+
+        print("Following dam file will be processed: " + import_file_name)
+        print("Initial Conditions Defined:")
+        print("Grid Dimensions: ", str(area.shape))
+        print("Grid sides in meter ", str(grid_sides))
+        print("Robot Number: ", len(start_positions))
+        print("Initial Robot positions: ", start_positions)
+        print("Portions for each Robot:", portions)
+        print("Maximum Iterations: " + str(max_iter))
+        print("Dynamic Cells Count: " + str(dynamic_cells))
+        print("Importance: " + str(importance))
+        print("CC Variation: " + str(cc_variation))
+        print("Random Influence Number: " + str(random_level))
+
+        DARP.__init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, importance, start_positions, portions,
+                      visualization, video_export, import_file_name)
 
         if not self.success:
             print("DARP did not manage to find a solution for the given configuration!")
@@ -34,7 +50,7 @@ class multiRobotPathPlanner(DARP):
                 ct.CalculatePathsSequence(4 * robot[0] * self.cols + 2 * robot[1])
                 AllRealPaths.append(ct.PathSequence)
 
-            TypesOfLines = np.zeros((self.rows*2, self.cols*2, 2))
+            TypesOfLines = np.zeros((self.rows * 2, self.cols * 2, 2))
             for idx, robot in enumerate(self.init_robot_pos):
                 flag = False
                 for connection in AllRealPaths[idx]:
@@ -75,7 +91,7 @@ class multiRobotPathPlanner(DARP):
                             TypesOfLines[connection[0]][connection[1]][indxadd1] = 4
                             TypesOfLines[connection[2]][connection[3]][indxadd2] = 1
 
-            subCellsAssignment = np.zeros((2*self.rows, 2*self.cols))
+            subCellsAssignment = np.zeros((2 * self.rows, 2 * self.cols))
             for i in range(self.rows):
                 for j in range(self.cols):
                     subCellsAssignment[2 * i][2 * j] = self.A[i][j]
@@ -96,10 +112,10 @@ class multiRobotPathPlanner(DARP):
             print(mode, val)
 
     def CalcRealBinaryReg(self, BinaryRobotRegion, rows, cols):
-        temp = np.zeros((2*rows, 2*cols))
+        temp = np.zeros((2 * rows, 2 * cols))
         RealBinaryRobotRegion = np.zeros((2 * rows, 2 * cols), dtype=bool)
-        for i in range(2*rows):
-            for j in range(2*cols):
+        for i in range(2 * rows):
+            for j in range(2 * cols):
                 temp[i, j] = BinaryRobotRegion[(int(i / 2))][(int(j / 2))]
                 if temp[i, j] == 0:
                     RealBinaryRobotRegion[i, j] = False
@@ -140,7 +156,6 @@ def get_random_start_points(number_of_start_points: int, area_array: np.ndarray,
 
 
 def to_image(filename: str, optimal_assignment_array):
-
     file_path = Path('result_export', filename + ".jpg")
     if not file_path.parent.exists():
         os.makedirs(file_path.parent)
@@ -151,40 +166,24 @@ def to_image(filename: str, optimal_assignment_array):
 if __name__ == '__main__':
 
     dam_file_name = "Talsperre Malter.geojson"
+    grid_sides_in_meter = 3
 
-    grid_cells = get_grid_array(dam_file_name, 3, multiprocessing=True)  #cProfile.run('', 'result_export/restats', sort=SortKey.TIME)
+    grid_cells = get_grid_array(dam_file_name, grid_sides_in_meter, multiprocessing=True)
 
-    obstacles_positions = get_area_indices(grid_cells, value=False)
+    # obstacles_positions = get_area_indices(grid_cells, value=False)
 
-    rows, cols = grid_cells.shape
-    start_points = get_random_start_points(3, grid_cells)  # [(230, 180), (243, 178), (212, 176)] damned start points
+    start_points = [(230, 180), (243, 178), (212, 176)]
+    # get_random_start_points(3, grid_cells)
+    # [(269, 158), (529, 281), (564, 304)] and portions [0.4, 0.3, 0.3] --> good ones
+    # [(230, 180), (243, 178), (212, 176)] damned start points
     # [(63, 217), (113, 195), (722, 326)] better
 
-    not_equal_portions = False  # this trigger should be True, if the portions are not equal
-
-    if not_equal_portions:
-        portions = [0.3, 0.2, 0.5]
-    else:
+    portions = [0.3, 0.2, 0.5]
+    # want equal portions?
+    if False:
         portions = []
         for idx, drone in enumerate(start_points):
             portions.append(1 / len(start_points))
-
-    if len(start_points) != len(portions):
-        print("Portions should be defined for each drone")
-        sys.exit(1)
-
-    s = sum(portions)
-    if abs(s-1) >= 0.0001:
-        print("Sum of portions should be equal to 1.")
-        sys.exit(2)
-
-    # TODO fix startpoint sanity check and move to DARP
-    # for start_point in start_points:
-    #    transformed = np.array(start_point).T
-    #    if transformed in obstacles_positions:
-    #        print("Initial robot start position should not be on obstacle.")
-    #        print("Problems at following init position: " + str(start_point))
-    #        sys.exit(3)
 
     MaxIter = 80000
     CCvariation = 0.01
@@ -195,11 +194,6 @@ if __name__ == '__main__':
     image_export_final_assignment_matrix = True
     video_export_assignment_matrix_changes = True
 
-    print("Following dam file will be processed: " + dam_file_name)
-    print("\nInitial Conditions Defined:")
-    print("Grid Dimensions:", rows, cols)
-    print("Robot Number:", len(start_points))
-    print("Initial Robots' positions", start_points)
-    print("Portions for each Robot:", portions, "\n")
-
-    multiRobotPathPlanner(rows, cols, MaxIter, CCvariation, randomLevel, dcells, importance, not_equal_portions, start_points, portions, obstacles_positions, visualize, image_export_final_assignment_matrix, dam_file_name, video_export_assignment_matrix_changes)
+    multiRobotPathPlanner(grid_cells, grid_sides_in_meter, np.uintc(MaxIter), CCvariation, randomLevel, np.uintc(dcells), importance,
+                          start_points, portions, visualize, image_export_final_assignment_matrix, dam_file_name,
+                          video_export_assignment_matrix_changes)
