@@ -12,28 +12,15 @@ import os
 
 
 class multiRobotPathPlanner(DARP):
-    def __init__(self, area, grid_sides, max_iter, cc_variation, random_level, dynamic_cells, importance, start_positions, portions,
+    def __init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, importance, start_positions, portions,
                  visualization, image_export, import_file_name, video_export):
-
-        print("Following dam file will be processed: " + import_file_name)
-        print("Initial Conditions Defined:")
-        print("Grid Dimensions: ", str(area.shape))
-        print("Grid sides in meter ", str(grid_sides))
-        print("Robot Number: ", len(start_positions))
-        print("Initial Robot positions: ", start_positions)
-        print("Portions for each Robot:", portions)
-        print("Maximum Iterations: " + str(max_iter))
-        print("Dynamic Cells Count: " + str(dynamic_cells))
-        print("Importance: " + str(importance))
-        print("CC Variation: " + str(cc_variation))
-        print("Random Influence Number: " + str(random_level))
 
         DARP.__init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, importance, start_positions, portions,
                       visualization, video_export, import_file_name)
 
         if not self.success:
             print("DARP did not manage to find a solution for the given configuration!")
-            sys.exit(4)
+            sys.exit(3)
 
         if image_export:
             to_image(import_file_name, self.A)
@@ -187,13 +174,13 @@ if __name__ == '__main__':
 
     MaxIter = 80000
     CCvariation = 0.01
-    randomLevel = 0.0001
+    randomLevel = 0.0005
     dcells = 30
     importance = False
     visualize = False
     image_export_final_assignment_matrix = True
     video_export_assignment_matrix_changes = True
 
-    multiRobotPathPlanner(grid_cells, grid_sides_in_meter, np.uintc(MaxIter), CCvariation, randomLevel, np.uintc(dcells), importance,
+    multiRobotPathPlanner(grid_cells, np.uintc(MaxIter), CCvariation, randomLevel, np.uintc(dcells), importance,
                           start_points, portions, visualize, image_export_final_assignment_matrix, dam_file_name,
                           video_export_assignment_matrix_changes)
