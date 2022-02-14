@@ -5,7 +5,7 @@ import sys
 import cv2
 from scipy import ndimage
 from Visualization import darp_area_visualization
-# import time
+import time
 from tqdm.auto import tqdm
 import imageio
 from PIL import Image
@@ -18,8 +18,8 @@ from numba.typed import List
 np.set_printoptions(threshold=sys.maxsize)
 
 
-@njit
-def check_start_positions(start_positions: List, area: np.ndarray):
+# @njit
+def check_start_positions(start_positions, area: np.ndarray):
     for position in start_positions:
         # TODO check if there are obstacle cells (False) around start position cell as area boundary check
         if not area[position]:
@@ -28,8 +28,8 @@ def check_start_positions(start_positions: List, area: np.ndarray):
     return True
 
 
-@njit
-def check_portions(start_positions: List, portions: List):
+# @njit
+def check_portions(start_positions, portions):
     if len(start_positions) != len(portions):
         # print("Number of portions and robot start positions don't match. One portion should be defined for each drone.")
         return False
@@ -40,17 +40,15 @@ def check_portions(start_positions: List, portions: List):
     return True
 
 
-@njit(parallel=True, fastmath=True)  # cache=True
+# @njit(parallel=True)  # cache=True, fastmath=True
 def assign(start_positions, area_shape, Assignment_Matrix, Grid_Enviroment, Metric_Matrix):
     rows, cols = area_shape
-    BWlist = np.zeros((len(start_positions), rows, cols))
-    for idx, robot in enumerate(start_positions):
-        BWlist[idx, robot[0], robot[1]] = 1
 
     ArrayOfElements = np.zeros(len(start_positions))
 
     for i in prange(rows):
         for j in prange(cols):
+
             # if non obstacle tile
             if Grid_Enviroment[i, j] == -1:
                 minV = Metric_Matrix[0, i, j]  # finding minimal value from here on (argmin)
@@ -60,19 +58,17 @@ def assign(start_positions, area_shape, Assignment_Matrix, Grid_Enviroment, Metr
                         # the actual decision making if distance of tile is lower for one robo startpoint than to another
                         minV = Metric_Matrix[idx, i, j]
                         indMin = idx
-
                 Assignment_Matrix[i][j] = indMin
-                BWlist[indMin, i, j] = 1
                 ArrayOfElements[indMin] += 1
 
             # if obstacle tile
             elif Grid_Enviroment[i, j] == -2:
                 Assignment_Matrix[i, j] = len(start_positions)
 
-    return BWlist, Assignment_Matrix, ArrayOfElements
+    return Assignment_Matrix, ArrayOfElements
 
 
-@njit
+# @njit
 def generateRandomMatrix(random_level: float, area_shape: tuple):
     """
     Generates a matrix in area_shape with a random value for every tiles (around 1)
@@ -82,7 +78,7 @@ def generateRandomMatrix(random_level: float, area_shape: tuple):
     return RandomMatrix
 
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def FinalUpdateOnMetricMatrix(criterionMatrix, currentMetricMatrix: np.ndarray, ConnectedMultiplierMatrix,
                               random_level: float):
     """
@@ -98,7 +94,7 @@ def FinalUpdateOnMetricMatrix(criterionMatrix, currentMetricMatrix: np.ndarray, 
     return metric_matrix_new
 
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def CalcConnectedMultiplier(cc_variation, dist1, dist2):
     """
     Calculates the ConnectedMultiplier between the binary robot tiles (connected area) and the binary non-robot tiles
@@ -116,7 +112,7 @@ def CalcConnectedMultiplier(cc_variation, dist1, dist2):
     return returnM
 
 
-@njit(parallel=True, fastmath=True)
+# @njit(parallel=True)  # , fastmath=True
 def constructBinaryImages(area_tiles, robot_start_point):
     """
     Returns 2 maps in the given area_tiles.shape
@@ -186,8 +182,8 @@ def euclidian_distance(first, second):
     return gen_cust_dist_func(inner, outer, parallel=True)
 
 
-@njit(parallel=True, cache=True)  # fastmath=True
-def construct_Assignment_Matrix(area_shape, initial_positions: List, obstacle_number: int, portions: List):
+# @njit(parallel=True)  # fastmath=True, cache=True
+def construct_Assignment_Matrix(area_shape, initial_positions, obstacle_number, portions):
     rows, cols = area_shape
     Notiles = rows * cols
     effectiveSize = Notiles - len(initial_positions) - obstacle_number
@@ -290,7 +286,7 @@ class DARP:
         self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=np.uint8)
         self.BinaryRobotRegions = np.full((len(self.init_robot_pos), self.rows, self.cols), False, dtype=bool)
         self.MetricMatrix = copy.deepcopy(self.AllDistances)
-        self.BWlist = np.zeros((len(self.init_robot_pos), self.rows, self.cols))
+        # self.BWlist = np.zeros((len(self.init_robot_pos), self.rows, self.cols))
         self.ArrayOfElements = np.zeros(len(self.init_robot_pos))
 
         self.color = []
@@ -308,9 +304,17 @@ class DARP:
                                                                            self.init_robot_pos)
 
         if self.video_export:
-            # timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-            movie_file_path = Path("result_export", str(self.import_geometry_file_name).replace(" " and ".geojson",
-                                                                                                "") + "-DARP_animation.gif")
+            timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+            gif_file_name = timestamp + "_" + str(self.import_geometry_file_name) + "_start" + str(self.init_robot_pos)\
+                            + "_portions" + str(portions) + "_rand" + str(self.randomLevel)\
+                            + "_ccvar" + str(self.ConnectedMultiplierMatrix_variation)\
+                            + "_imp" + str(self.Importance) + ".gif"
+
+            b = {' ': '', '.geojson': ''}
+            for x, y in b.items():
+                gif_file_name = gif_file_name.replace(x, y)
+
+            movie_file_path = Path("result_export", gif_file_name)
             if not movie_file_path.parent.exists():
                 os.makedirs(movie_file_path.parent)
             self.gif_writer = imageio.get_writer(movie_file_path, mode='i', duration=0.3)
@@ -329,7 +333,6 @@ class DARP:
         # obstacle tiles value is -2
         obstacle_positions = np.where(area == False)
         obstacle_num = len(obstacle_positions[0])
-        # listOfCoordinates = list(zip(obstacle_positions[0], obstacle_positions[1]))
         local_grid_env[obstacle_positions] = -2
 
         for idx, es_pos in enumerate(empty_space):
@@ -337,7 +340,7 @@ class DARP:
 
         return local_grid_env, obstacle_num
 
-    def video_export_add_frame(self, iteration):
+    def video_export_add_frame(self, iteration=0):
 
         framerate = 2
         write_frame = (iteration % framerate) == 0
@@ -352,6 +355,19 @@ class DARP:
         criterionMatrix = np.zeros((self.rows, self.cols))
         absolut_iterations = 0  # absolute iterations number which were needed to find optimal result
 
+        self.A, self.ArrayOfElements = assign(List(self.init_robot_pos),
+                                              (self.rows, self.cols),
+                                              self.A,
+                                              self.GridEnv,
+                                              self.MetricMatrix)
+
+        if self.video_export:
+            self.video_export_add_frame()
+
+        if self.visualization:
+            self.assignment_matrix_visualization.placeCells()
+            # time.sleep(0.1)
+
         while self.termThr <= self.Dynamic_Cells and not success:
             downThres = (self.Notiles - self.termThr * (len(self.init_robot_pos) - 1)) / (
                     self.Notiles * len(self.init_robot_pos))
@@ -364,12 +380,6 @@ class DARP:
                 # profiler = Profiler()
                 # profiler.start()
                 ###########################
-
-                self.BWlist, self.A, self.ArrayOfElements = assign(List(self.init_robot_pos), (self.rows, self.cols),
-                                                                   self.A, self.GridEnv, self.MetricMatrix)
-
-                if self.video_export:
-                    self.video_export_add_frame(iteration)
 
                 ConnectedMultiplierList = np.ones((len(self.init_robot_pos), self.rows, self.cols))
                 ConnectedRobotRegions = np.full(len(self.init_robot_pos), False, dtype=bool)
@@ -396,13 +406,6 @@ class DARP:
                         divFairError[idx] = downThres - plainErrors[idx]
                     elif plainErrors[idx] > upperThres:
                         divFairError[idx] = upperThres - plainErrors[idx]
-
-                if self.IsThisAGoalState(self.termThr, ConnectedRobotRegions):
-                    print("\nFinal Assignment Matrix (" + str(iteration) + " Iterations, Tiles per Robot " + str(
-                        self.ArrayOfElements) + ")")
-                    success = True
-                    absolut_iterations += iteration
-                    break
 
                 TotalNegPerc = 0
                 totalNegPlainErrors = 0
@@ -435,15 +438,31 @@ class DARP:
                         ConnectedMultiplierList[idx, :, :],
                         self.randomLevel)
 
+                self.A, self.ArrayOfElements = assign(List(self.init_robot_pos),
+                                                      (self.rows, self.cols),
+                                                      self.A,
+                                                      self.GridEnv,
+                                                      self.MetricMatrix)
+                iteration += 1
+
+                if self.video_export:
+                    self.video_export_add_frame(iteration)
+
+                if self.visualization:
+                    self.assignment_matrix_visualization.placeCells(iteration_number=iteration)
+                    # time.sleep(0.1)
+
                 # End performance analyses
                 # profiler.stop()
                 # profiler.open_in_browser()
                 ##########################
 
-                iteration += 1
-                if self.visualization:
-                    self.assignment_matrix_visualization.placeCells(iteration_number=iteration)
-                    # time.sleep(0.1)
+                if self.IsThisAGoalState(self.termThr, ConnectedRobotRegions):
+                    print("\nFinal Assignment Matrix (" + str(iteration) + " Iterations, Tiles per Robot " + str(
+                        self.ArrayOfElements) + ")")
+                    success = True
+                    absolut_iterations += iteration
+                    break
 
             # next iteration of DARP with increased flexibility
             if not success:

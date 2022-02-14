@@ -159,13 +159,13 @@ if __name__ == '__main__':
 
     # obstacles_positions = get_area_indices(grid_cells, value=False)
 
-    start_points = [(230, 180), (243, 178), (212, 176)]
+    start_points = [(63, 217), (113, 195), (722, 326)]
     # get_random_start_points(3, grid_cells)
     # [(269, 158), (529, 281), (564, 304)] and portions [0.4, 0.3, 0.3] --> good ones
-    # [(230, 180), (243, 178), (212, 176)] damned start points
+    # [(230, 180), (243, 178), (212, 176)] damned start points, portions [0.3, 0.2, 0.5]
     # [(63, 217), (113, 195), (722, 326)] better
 
-    portions = [0.3, 0.2, 0.5]
+    portions = [0.4, 0.3, 0.3]
     # want equal portions?
     if False:
         portions = []
@@ -174,7 +174,7 @@ if __name__ == '__main__':
 
     MaxIter = 80000
     CCvariation = 0.01
-    randomLevel = 0.0005
+    randomLevel = 0.0001
     dcells = 30
     importance = False
     visualize = False
