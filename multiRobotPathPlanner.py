@@ -9,6 +9,7 @@ import sys
 from turns import turns
 import matplotlib.pyplot as plt
 import os
+import time
 
 
 class multiRobotPathPlanner(DARP):
@@ -23,7 +24,7 @@ class multiRobotPathPlanner(DARP):
             sys.exit(3)
 
         if image_export:
-            to_image(import_file_name, self.A)
+            to_image(self.import_geometry_file_name, self.A, self.init_robot_pos, self.Rportions, self.randomLevel, self.ConnectedMultiplierMatrix_variation, self.Importance)
 
         mode_to_drone_turns = dict()
 
@@ -142,8 +143,18 @@ def get_random_start_points(number_of_start_points: int, area_array: np.ndarray,
     return start_coordinates
 
 
-def to_image(filename: str, optimal_assignment_array):
-    file_path = Path('result_export', filename + ".jpg")
+def to_image(filename: str, optimal_assignment_array, initial_positions, deviding, random, cc_var, Importance):
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    export_file_name = timestamp + "_" + str(filename) + "_start" + str(initial_positions) \
+                    + "_portions" + str(deviding) + "_rand" + str(random) \
+                    + "_ccvar" + str(cc_var) \
+                    + "_imp" + str(Importance)
+
+    b = {' ': '', '.geojson': ''}
+    for x, y in b.items():
+        export_file_name = export_file_name.replace(x, y)
+
+    file_path = Path('result_export', export_file_name + ".jpg")
     if not file_path.parent.exists():
         os.makedirs(file_path.parent)
 
