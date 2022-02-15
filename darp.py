@@ -40,7 +40,7 @@ def check_portions(start_positions, portions):
     return True
 
 
-# @njit(parallel=True)  # cache=True, fastmath=True
+@njit  # parallel=True cache=True, fastmath=True
 def assign(start_positions, area_shape, Assignment_Matrix, Grid_Enviroment, Metric_Matrix):
     rows, cols = area_shape
 
@@ -68,7 +68,7 @@ def assign(start_positions, area_shape, Assignment_Matrix, Grid_Enviroment, Metr
     return Assignment_Matrix, ArrayOfElements
 
 
-# @njit
+@njit
 def generateRandomMatrix(random_level: float, area_shape: tuple):
     """
     Generates a matrix in area_shape with a random value for every tiles (around 1)
@@ -78,7 +78,7 @@ def generateRandomMatrix(random_level: float, area_shape: tuple):
     return RandomMatrix
 
 
-# @njit(parallel=True)
+@njit  # (parallel=True)
 def FinalUpdateOnMetricMatrix(criterionMatrix, currentMetricMatrix: np.ndarray, ConnectedMultiplierMatrix,
                               random_level: float):
     """
@@ -89,12 +89,11 @@ def FinalUpdateOnMetricMatrix(criterionMatrix, currentMetricMatrix: np.ndarray, 
     :param ConnectedMultiplierMatrix: ConnectedMultiplierMatrix of chosen robot
     :return: new MetricMatrix
     """
-    metric_matrix_new = currentMetricMatrix * criterionMatrix * generateRandomMatrix(random_level,
-                                                                                     currentMetricMatrix.shape) * ConnectedMultiplierMatrix
+    metric_matrix_new = currentMetricMatrix * criterionMatrix * generateRandomMatrix(random_level, currentMetricMatrix.shape) * ConnectedMultiplierMatrix
     return metric_matrix_new
 
 
-# @njit(parallel=True)
+@njit  # (parallel=True)
 def CalcConnectedMultiplier(cc_variation, dist1, dist2):
     """
     Calculates the ConnectedMultiplier between the binary robot tiles (connected area) and the binary non-robot tiles
@@ -112,7 +111,7 @@ def CalcConnectedMultiplier(cc_variation, dist1, dist2):
     return returnM
 
 
-# @njit(parallel=True)  # , fastmath=True
+@njit  # (parallel=True)  # , fastmath=True
 def constructBinaryImages(area_tiles, robot_start_point):
     """
     Returns 2 maps in the given area_tiles.shape
@@ -182,7 +181,7 @@ def euclidian_distance(first, second):
     return gen_cust_dist_func(inner, outer, parallel=True)
 
 
-# @njit(parallel=True)  # fastmath=True, cache=True
+@njit  # (parallel=True)  # fastmath=True, cache=True
 def construct_Assignment_Matrix(area_shape, initial_positions, obstacle_number, portions):
     rows, cols = area_shape
     Notiles = rows * cols
