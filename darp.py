@@ -13,7 +13,7 @@ from pathlib import Path
 import random
 import os
 from pyinstrument import Profiler
-from numba import jit, njit, prange
+from numba import njit
 from numba.typed import List
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -45,26 +45,12 @@ def check_portions(start_positions, portions):
 
 
 @njit(fastmath=True)  # (fastmath=True)  # cache=True, fastmath=True
-def assign(start_positions, area_shape, Assignment_Matrix, Grid_Enviroment, Metric_Matrix, ArrayOfElements):
-    rows, cols = area_shape
+def assign(start_positions, Assignment_Matrix, area_bool, Metric_Matrix, ArrayOfElements):
 
-    for i in range(rows):
-        for j in range(cols):
-            minV = 0
-            # if non obstacle tile
-            if Grid_Enviroment[i, j] == -1:
-                minV = Metric_Matrix[0, i, j]  # finding minimal value from here on (argmin)
-                indMin = 0  # number of assigned robot of tile (i,j)
-                for idx in range(len(start_positions)):
-                    if Metric_Matrix[idx, i, j] < minV:
-                        # the actual decision making if distance of tile is lower for one robo startpoint than to another
-                        minV = Metric_Matrix[idx, i, j]
-                        indMin = idx
-                Assignment_Matrix[i, j] = indMin
-
-            # if obstacle tile
-            elif Grid_Enviroment[i, j] == -2:
-                Assignment_Matrix[i, j] = len(start_positions)
+    for r in range(Assignment_Matrix.shape[0]):
+        for c in range(Assignment_Matrix.shape[1]):
+            if area_bool[r, c]:
+                Assignment_Matrix[r, c] = np.argmin(Metric_Matrix[:, r, c])
 
     for i in range(len(start_positions)):
         ArrayOfElements[i] = np.count_nonzero(Assignment_Matrix == i) - 1  # -1 for the start position of robot i
@@ -128,7 +114,7 @@ def calculateCriterionMatrix(importance_trigger, TilesImportance, MinimumImporta
     return returnCrit
 
 
-@njit  # (parallel=True)  # , fastmath=True
+@njit(fastmath=True)  # parallel=True, fastmath=True
 def constructBinaryImages(area_tiles, robot_start_point):
     """
     Returns 2 maps in the given area_tiles.shape
@@ -162,6 +148,7 @@ def update_connectivity(connectivity_matrix: np.ndarray, assignment_matrix: np.n
 def NormalizedEuclideanDistanceBinary(RobotR, BinaryMap):
     """
     Calculates the euclidean distances of the tiles around a given binary(non-)robot map and normalizes it.
+
     :param RobotR: True: given BinaryMap is area of tiles around the robot start point (BinaryRobot); False: if BinaryNonRobot tiles area and not background
     :param BinaryMap: area of tiles as binary map
     :return: Normalized distances map of the given binary (non-/)robot map in BinaryMap.shape
@@ -179,19 +166,21 @@ def NormalizedEuclideanDistanceBinary(RobotR, BinaryMap):
 
 
 @njit(cache=True, fastmath=True)  # (parallel=True) fastmath=True
-def construct_Assignment_Matrix(area_shape, initial_positions, obstacle_number, portions):
-    rows, cols = area_shape
+def construct_Assignment_Matrix(area_bool: np.ndarray, initial_positions: List, portions: List):
+    rows, cols = area_bool.shape
     Notiles = rows * cols
-    effectiveSize = Notiles - len(initial_positions) - obstacle_number
+
+    obstacle_positions = np.where(~area_bool)
+    non_obstacle_positions = np.where(area_bool)
+    effectiveSize = Notiles - len(initial_positions) - len(obstacle_positions[0])
     termThr = 0
 
     if effectiveSize % len(initial_positions) != 0:
         termThr = 1
 
     DesireableAssign = np.zeros(len(initial_positions))
-    # MaximunDist = np.zeros(len(initial_positions))
     MaximumImportance = np.zeros(len(initial_positions))
-    MinimumImportance = np.zeros(len(initial_positions))
+    MinimumImportance = np.full(len(initial_positions), np.finfo(np.float64).max)
     AllDistances = np.zeros((len(initial_positions), rows, cols))
     TilesImportance = np.zeros((len(initial_positions), rows, cols))
 
@@ -202,25 +191,29 @@ def construct_Assignment_Matrix(area_shape, initial_positions, obstacle_number, 
 
     for x in range(rows):
         for y in range(cols):
-            tempSum = 0
-            for idx, robot in enumerate(initial_positions):
-                temp = np.subtract(np.array(robot), np.array((x, y))).astype(np.float64)
-                AllDistances[idx, x, y] = np.linalg.norm(temp)
-                # euclidian_distance(np.array(robot), np.array((x, y)))  # E!
-                tempSum += AllDistances[idx, x, y]
+            if area_bool[x, y]:
+                tempSum = 0
+                for idx, robot in enumerate(initial_positions):
+                    temp = np.subtract(np.array(robot), np.array((x, y))).astype(np.float64)
+                    AllDistances[idx, x, y] = np.linalg.norm(temp)
+                    tempSum += AllDistances[idx, x, y]
 
-            for idx, robot in enumerate(initial_positions):
-                if tempSum - AllDistances[idx, x, y] != 0:
-                    TilesImportance[idx, x, y] = 1 / (tempSum - AllDistances[idx, x, y])
-                else:
-                    TilesImportance[idx, x, y] = 1
+                for idx, robot in enumerate(initial_positions):
+                    if tempSum - AllDistances[idx, x, y] != 0:
+                        TilesImportance[idx, x, y] = 1 / (tempSum - AllDistances[idx, x, y])
+                    else:
+                        TilesImportance[idx, x, y] = 1
 
     for idx in range(len(initial_positions)):
-        # MaximunDist[idx] = np.amax(AllDistances[idx, :, :])
-        MaximumImportance[idx] = np.amax(TilesImportance[idx, :, :])
-        MinimumImportance[idx] = np.amin(TilesImportance[idx, :, :])
+        for x in range(rows):
+            for y in range(cols):
+                if area_bool[x, y]:
+                    if TilesImportance[idx, x, y] > MaximumImportance[idx]:
+                        MaximumImportance[idx] = TilesImportance[idx, x, y]
+                    elif TilesImportance[idx, x, y] < MinimumImportance[idx]:
+                        MinimumImportance[idx] = TilesImportance[idx, x, y]
 
-    return AllDistances, termThr, Notiles, DesireableAssign, TilesImportance, MinimumImportance, MaximumImportance, effectiveSize
+    return AllDistances, non_obstacle_positions, termThr, Notiles, DesireableAssign, TilesImportance, MinimumImportance, MaximumImportance, effectiveSize
 
 
 class DARP:
@@ -272,13 +265,11 @@ class DARP:
         self.Importance = importance
         self.import_file_name = import_file_name
 
-        self.A = np.zeros((self.rows, self.cols))
+        self.A = np.full((self.rows, self.cols), len(self.init_robot_pos))
 
-        empty_space = []  # TODO if extra restricted area is necessary later
         self.GridEnv_bool = area_bool
-        self.GridEnv, self.Obstacle_Number = self.defineGridEnv(area_bool, empty_space)
-        self.AllDistances, self.termThr, self.Notiles, self.DesireableAssign, self.TilesImportance, self.MinimumImportance, self.MaximumImportance, self.effectiveTileNumber = construct_Assignment_Matrix(
-            area_bool.shape, List(start_positions), self.Obstacle_Number, List(portions))
+        self.AllDistances, self.no_obstacle_position, self.termThr, self.Notiles, self.DesireableAssign, self.TilesImportance, self.MinimumImportance, self.MaximumImportance, self.effectiveTileNumber = construct_Assignment_Matrix(
+            self.GridEnv_bool, List(start_positions), List(portions))
         print("Effective number of tiles: ", self.effectiveTileNumber)
 
         self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=np.uint8)
@@ -293,7 +284,7 @@ class DARP:
 
         # End performance analyses
         # profiler.stop()
-        # profiler.print(color=True, show_all=True)
+        # profiler.print(color=True)
         # profiler.open_in_browser()
         ##########################
 
@@ -307,29 +298,13 @@ class DARP:
                 os.makedirs(movie_file_path.parent)
             self.gif_writer = imageio.get_writer(movie_file_path, mode='i', duration=0.15)
 
-        self.success = self.update()
-
-    def defineGridEnv(self, area: np.ndarray, empty_space):
-
-        local_grid_env = np.full(shape=(self.rows, self.cols), fill_value=-1)  # create non obstacle map with value -1
-
-        # initial robot tiles will have their array.index as value
-        for idx, position in enumerate(self.init_robot_pos):
-            local_grid_env[position] = idx
-            self.A[position] = idx
-
-        # obstacle tiles value is -2
-        obstacle_positions = np.where(area == False)
-        obstacle_num = len(obstacle_positions[0])
-        local_grid_env[obstacle_positions] = -2
-
-        for idx, es_pos in enumerate(empty_space):
-            local_grid_env[es_pos] = -2
-
-        return local_grid_env, obstacle_num
+        measure_start = time.time()
+        self.success, self.absolute_iterations = self.update()
+        measure_end = time.time()
+        print("Elapsed time: ", measure_end - measure_start, " sec")
+        print("Average ", self.absolute_iterations / (measure_end - measure_start), " iter / sec")
 
     def video_export_add_frame(self, iteration=0):
-
         framerate = 5
         write_frame = (iteration % framerate) == 0
 
@@ -346,8 +321,7 @@ class DARP:
         criterionMatrix = np.zeros((self.rows, self.cols))
         absolut_iterations = 0  # absolute iterations number which were needed to find optimal result
 
-        assign(List(self.init_robot_pos), (self.rows, self.cols), self.A, self.GridEnv, self.MetricMatrix,
-               self.ArrayOfElements)
+        assign(List(self.init_robot_pos), self.A, self.GridEnv_bool, self.MetricMatrix, self.ArrayOfElements)
 
         if self.video_export:
             self.video_export_add_frame()
@@ -426,8 +400,7 @@ class DARP:
                         ConnectedMultiplierList[idx, :, :],
                         self.randomLevel)
 
-                assign(List(self.init_robot_pos), (self.rows, self.cols), self.A, self.GridEnv, self.MetricMatrix,
-                       self.ArrayOfElements)
+                assign(List(self.init_robot_pos), self.A, self.GridEnv_bool, self.MetricMatrix, self.ArrayOfElements)
 
                 iteration += 1
 
@@ -447,7 +420,8 @@ class DARP:
                 if self.IsThisAGoalState(self.termThr, ConnectedRobotRegions):
                     success = True
                     absolut_iterations += iteration
-                    self.gif_writer.close()
+                    if self.video_export:
+                        self.gif_writer.close()
                     print(
                         "\nFinal Assignment Matrix (" + str(absolut_iterations) + " Iterations, Tiles per Robot " + str(
                             self.ArrayOfElements) + ")")
@@ -460,7 +434,7 @@ class DARP:
                 self.termThr += 1
 
         self.getBinaryRobotRegions()
-        return success
+        return success, absolut_iterations
 
     def getBinaryRobotRegions(self):
         """
@@ -479,7 +453,6 @@ class DARP:
         :return: True, if criteria fits; False, if criteria aren't met
         """
         for idx, r in enumerate(self.init_robot_pos):
-            if np.absolute(self.DesireableAssign[idx] - self.ArrayOfElements[idx]) > thresh or not \
-            connected_robot_regions[idx]:
+            if np.absolute(self.DesireableAssign[idx] - self.ArrayOfElements[idx]) > thresh or not connected_robot_regions[idx]:
                 return False
         return True
