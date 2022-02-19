@@ -151,7 +151,6 @@ class multiRobotPathPlanner(DARP):
         # existing gif in results_export folder?
         input_path = Path("result_export", file_name + ".gif")
         reader = imageio.get_reader(input_path)
-        all_meta = reader.get_meta_data()
         output_path = Path("result_export", file_name + ".mp4")
         writer = imageio.get_writer(output_path)
         for i, im in tqdm(enumerate(reader)):
@@ -169,7 +168,10 @@ def get_random_start_points(number_of_start_points: int, area_array: np.ndarray,
 
         for ix, column in enumerate(area_array[random_row]):
             if area_array[random_row][ix]:
-                start_coordinates.append((random_row, ix))
+                try:
+                    start_coordinates.index((random_row, ix))  # check if start point already in the list
+                except ValueError:
+                    start_coordinates.append((random_row, ix))
                 break
 
     return start_coordinates
@@ -182,12 +184,12 @@ if __name__ == '__main__':
 
     grid_cells = get_grid_array(dam_file_name, grid_sides_in_meter, multiprocessing=True)
 
-    start_points = get_random_start_points(5, grid_cells)
+    start_points = [(269, 158), (529, 281), (564, 304)]  # get_random_start_points(5, grid_cells)
     # [(269, 158), (529, 281), (564, 304)] and portions [0.4, 0.3, 0.3] --> good ones
     # [(230, 180), (243, 178), (212, 176)] damned start points, portions [0.3, 0.2, 0.5]
     # [(63, 217), (113, 195), (722, 326)] better [0.4, 0.3, 0.3] or [0.3, 0.2, 0.5]
 
-    portions = [0.3, 0.1, 0.2, 0.1, 0.3]
+    portions = [0.4, 0.3, 0.3]  # [0.3, 0.1, 0.2, 0.1, 0.3]
     # want equal portions?
     if False:
         portions = []
