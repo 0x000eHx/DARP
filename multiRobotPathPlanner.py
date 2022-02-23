@@ -156,7 +156,7 @@ class multiRobotPathPlanner(DARP):
         for i, im in tqdm(enumerate(reader)):
             writer.append_data(im)
         writer.close()
-        print("Created video from assignment matrix .gif file!")
+        print("Created video from assignment matrix generation.gif file!")
 
 
 def get_random_start_points(number_of_start_points: int, area_array: np.ndarray, obstacle=False):

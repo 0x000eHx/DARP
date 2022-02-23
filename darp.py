@@ -22,41 +22,39 @@ os.environ['PYTHONHASHSEED'] = str(1)
 np.random.seed(1)
 
 
-# @njit
 def check_start_positions(start_positions, area: np.ndarray):
     for position in start_positions:
         # TODO check if there are obstacle cells (False) around start position cell as area boundary check
         if not area[position]:
-            # print("Start position: " + str(position) + " is not inside the given area!")
+            print("Start position: " + str(position) + " is not inside the given area!")
             return False
     return True
 
 
-# @njit
 def check_portions(start_positions, portions):
     if len(start_positions) != len(portions):
-        # print("Number of portions and robot start positions don't match. One portion should be defined for each drone.")
+        print("Number of portions and robot start positions don't match. One portion should be defined for each drone.")
         return False
     s = sum(portions)
     if abs(s - 1) >= 0.0001:
-        # print("Sum of portions has to be 1!")
+        print("Sum of portions has to be 1!")
         return False
     return True
 
 
-@njit(fastmath=True)  # (fastmath=True)  # cache=True, fastmath=True
-def assign(start_positions, Assignment_Matrix, area_bool, Metric_Matrix, ArrayOfElements):
+@njit(cache=True, fastmath=True)  # (fastmath=True)  # cache=True, fastmath=True
+def assign(Assignment_Matrix, area_bool, Metric_Matrix, ArrayOfElements):
 
     for r in range(Assignment_Matrix.shape[0]):
         for c in range(Assignment_Matrix.shape[1]):
             if area_bool[r, c]:
                 Assignment_Matrix[r, c] = np.argmin(Metric_Matrix[:, r, c])
 
-    for i in range(len(start_positions)):
+    for i in range(Metric_Matrix.shape[0]):
         ArrayOfElements[i] = np.count_nonzero(Assignment_Matrix == i) - 1  # -1 for the start position of robot i
 
 
-@njit
+@njit(cache=True, fastmath=True)
 def generateRandomMatrix(random_level: float, area_shape: tuple):
     """
     Generates a matrix in area_shape with a random value for every tiles (around 1)
@@ -65,7 +63,7 @@ def generateRandomMatrix(random_level: float, area_shape: tuple):
     return 2 * random_level * np.random.uniform(0, 1, size=area_shape) + (1 - random_level)
 
 
-@njit
+@njit(cache=True, fastmath=True)
 def FinalUpdateOnMetricMatrix(criterionMatrix, MetricMatrix: np.ndarray, ConnectedMultiplierMatrix,
                               random_level: float):
     """
@@ -79,7 +77,7 @@ def FinalUpdateOnMetricMatrix(criterionMatrix, MetricMatrix: np.ndarray, Connect
     MetricMatrix *= criterionMatrix * ConnectedMultiplierMatrix * generateRandomMatrix(random_level, MetricMatrix.shape)
 
 
-@njit
+@njit(cache=True, fastmath=True)
 def CalcConnectedMultiplier(cc_variation, dist1, dist2):
     """
     Calculates the ConnectedMultiplier between the binary robot tiles (connected area) and the binary non-robot tiles
@@ -94,7 +92,7 @@ def CalcConnectedMultiplier(cc_variation, dist1, dist2):
     return (returnM - MinV) * ((2 * cc_variation) / (MaxV - MinV)) + (1 - cc_variation)
 
 
-@njit(fastmath=True)
+@njit(cache=True, fastmath=True)
 def calculateCriterionMatrix(importance_trigger, TilesImportance, MinimumImportance,
                              MaximumImportance, correctionMult, smallerthan_zero):
     """
@@ -114,7 +112,7 @@ def calculateCriterionMatrix(importance_trigger, TilesImportance, MinimumImporta
     return returnCrit
 
 
-@njit(fastmath=True)  # parallel=True, fastmath=True
+@njit(cache=True, fastmath=True)  # parallel=True, fastmath=True
 def constructBinaryImages(area_tiles, robot_start_point):
     """
     Returns 2 maps in the given area_tiles.shape
@@ -135,7 +133,7 @@ def constructBinaryImages(area_tiles, robot_start_point):
     return robot_tiles_binary, nonrobot_tiles_binary
 
 
-@njit
+@njit(cache=True, fastmath=True)
 def update_connectivity(connectivity_matrix: np.ndarray, assignment_matrix: np.ndarray):
     """
     Updates the self.connectivity maps after the last calculation.
@@ -143,6 +141,11 @@ def update_connectivity(connectivity_matrix: np.ndarray, assignment_matrix: np.n
     """
     for idx in range(connectivity_matrix.shape[0]):
         connectivity_matrix[idx] = np.where(assignment_matrix == idx, 255, 0)
+
+
+@njit(cache=True, fastmath=True)
+def inverse_binary_map_as_uint8(BinaryMap):
+    return np.logical_not(BinaryMap).astype(np.uint8)
 
 
 def NormalizedEuclideanDistanceBinary(RobotR, BinaryMap):
@@ -153,7 +156,8 @@ def NormalizedEuclideanDistanceBinary(RobotR, BinaryMap):
     :param BinaryMap: area of tiles as binary map
     :return: Normalized distances map of the given binary (non-/)robot map in BinaryMap.shape
     """
-    distances_map = ndimage.distance_transform_edt(np.logical_not(BinaryMap))
+    distances_map = cv2.distanceTransform(inverse_binary_map_as_uint8(BinaryMap), distanceType=2, maskSize=0, dstType=5)
+
     MaxV = np.amax(distances_map)
     MinV = np.amin(distances_map)
 
@@ -163,6 +167,14 @@ def NormalizedEuclideanDistanceBinary(RobotR, BinaryMap):
     else:
         distances_map = ((distances_map - MinV) / (MaxV - MinV))  # range 0 to 1
     return distances_map
+
+
+@njit(cache=True, fastmath=True)
+def euclidian_distance_points2d(array1: np.array, array2: np.array) -> np.float_:
+    return (
+                   ((array1[0] - array2[0]) ** 2) +
+                   ((array1[1] - array2[1]) ** 2)
+           ) ** 0.5  # faster function with faster sqrt
 
 
 @njit(cache=True, fastmath=True)  # (parallel=True) fastmath=True
@@ -194,8 +206,7 @@ def construct_Assignment_Matrix(area_bool: np.ndarray, initial_positions: List, 
             if area_bool[x, y]:
                 tempSum = 0
                 for idx, robot in enumerate(initial_positions):
-                    temp = np.subtract(np.array(robot), np.array((x, y))).astype(np.float64)
-                    AllDistances[idx, x, y] = np.linalg.norm(temp)
+                    AllDistances[idx, x, y] = euclidian_distance_points2d(np.array(robot), np.array((x, y)))
                     tempSum += AllDistances[idx, x, y]
 
                 for idx, robot in enumerate(initial_positions):
@@ -268,8 +279,11 @@ class DARP:
         self.A = np.full((self.rows, self.cols), len(self.init_robot_pos))
 
         self.GridEnv_bool = area_bool
+        measure_start = time.time()
         self.AllDistances, self.no_obstacle_position, self.termThr, self.Notiles, self.DesireableAssign, self.TilesImportance, self.MinimumImportance, self.MaximumImportance, self.effectiveTileNumber = construct_Assignment_Matrix(
             self.GridEnv_bool, List(start_positions), List(portions))
+        measure_end = time.time()
+        print("Elapsed time construct_Assignment_Matrix(): ", (measure_end - measure_start), " sec")
         print("Effective number of tiles: ", self.effectiveTileNumber)
 
         self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=np.uint8)
@@ -301,8 +315,7 @@ class DARP:
         measure_start = time.time()
         self.success, self.absolute_iterations = self.update()
         measure_end = time.time()
-        print("Elapsed time: ", measure_end - measure_start, " sec")
-        print("Average ", self.absolute_iterations / (measure_end - measure_start), " iter / sec")
+        print("Elapsed time update(): ", (measure_end - measure_start), "sec")
 
     def video_export_add_frame(self, iteration=0):
         framerate = 5
@@ -321,7 +334,7 @@ class DARP:
         criterionMatrix = np.zeros((self.rows, self.cols))
         absolut_iterations = 0  # absolute iterations number which were needed to find optimal result
 
-        assign(List(self.init_robot_pos), self.A, self.GridEnv_bool, self.MetricMatrix, self.ArrayOfElements)
+        assign(self.A, self.GridEnv_bool, self.MetricMatrix, self.ArrayOfElements)
 
         if self.video_export:
             self.video_export_add_frame()
@@ -336,6 +349,7 @@ class DARP:
             upperThres = (self.Notiles + self.termThr) / (self.Notiles * len(self.init_robot_pos))
 
             # main optimization loop
+            time_start = time.time()
             for iteration in tqdm(range(self.MaxIter)):
 
                 # start performance analyse
@@ -400,7 +414,7 @@ class DARP:
                         ConnectedMultiplierList[idx, :, :],
                         self.randomLevel)
 
-                assign(List(self.init_robot_pos), self.A, self.GridEnv_bool, self.MetricMatrix, self.ArrayOfElements)
+                assign(self.A, self.GridEnv_bool, self.MetricMatrix, self.ArrayOfElements)
 
                 iteration += 1
 
@@ -418,13 +432,13 @@ class DARP:
                 ##########################
 
                 if self.IsThisAGoalState(self.termThr, ConnectedRobotRegions):
+                    time_stop = time.time()
                     success = True
                     absolut_iterations += iteration
                     if self.video_export:
                         self.gif_writer.close()
-                    print(
-                        "\nFinal Assignment Matrix (" + str(absolut_iterations) + " Iterations, Tiles per Robot " + str(
-                            self.ArrayOfElements) + ")")
+                    print("Final Assignment Matrix:\n(", absolut_iterations, "Iterations in", (time_stop-time_start), "sec (", absolut_iterations/(time_stop-time_start), "iter/sec)")
+                    print("Desireable Assignment:", self.DesireableAssign, ", Tiles per Robot:", self.ArrayOfElements)
                     break
 
             # next iteration of DARP with increased flexibility

@@ -37,8 +37,6 @@ def which_row_cells_within_area_boundaries(area, r, cell_height, c, cell_width):
         new_cell = shapely.geometry.box(x0, r, x1, y1)
         if new_cell.within(area):
             grid_row[idx] = True
-        else:
-            pass
     return grid_row
 
 
@@ -65,7 +63,7 @@ def processing_geometry_boundary_check(grid_size, selected_area, selected_gdf, m
         done_queue = Queue()
 
         num_of_processes = cpu_count() - 1
-        grid_cells_unsorted = []
+        grid = np.empty((len(rows), len(columns)), dtype=bool)
 
         # create tasks and push them into queue
         for idx, row in enumerate(rows):
@@ -78,7 +76,8 @@ def processing_geometry_boundary_check(grid_size, selected_area, selected_gdf, m
 
         for row in tqdm(rows):
             try:
-                grid_cells_unsorted.append(done_queue.get())
+                temp_row = done_queue.get()
+                grid[temp_row[0]] = np.array(temp_row[1])
             except queue.Empty as e:
                 print(e)
             except queue.Full as e:
@@ -87,10 +86,6 @@ def processing_geometry_boundary_check(grid_size, selected_area, selected_gdf, m
         # Tell child processes to stop
         for i in range(num_of_processes):
             task_queue.put('STOP')
-
-        grid_cells_sorted = sorted(grid_cells_unsorted, key=lambda x: x[0])  # sort by index, first entry
-
-        grid = np.array([i[1] for i in grid_cells_sorted])  # np.array easily creates 1 axe array out of list
 
     else:
         # serial processing, cause time doesn't matter
@@ -109,7 +104,14 @@ def processing_geometry_boundary_check(grid_size, selected_area, selected_gdf, m
 
 @jit()  # @njit(parallel=True)
 def numba_gridding(grid_size, selected_area, selected_gdf):
+    """
+    NOT WORKING
 
+    :param grid_size:
+    :param selected_area:
+    :param selected_gdf:
+    :return:
+    """
     xmin, ymin, xmax, ymax = selected_gdf.total_bounds
 
     # cell tile is one meter in lat/long, use centroid of area x, y values from geopandas for reference
@@ -147,11 +149,9 @@ def get_grid_array(dam_file_name: str, grid_size_meter: float, multiprocessing=T
     dam_biggest_water_area = max(gdf_dam_exploded, key=lambda a: a.area)
 
     # TODO check grid_size_meter for appropriate value
-    if multiprocessing:
-        grid = processing_geometry_boundary_check(grid_size_meter, dam_biggest_water_area, gdf_dam, multiprocessing=multiprocessing)
-        # numba_gridding(grid_size_meter, dam_biggest_water_area, gdf_dam)
-    else:
-        grid = processing_geometry_boundary_check(grid_size_meter, dam_biggest_water_area, gdf_dam, multiprocessing=multiprocessing)
+
+    grid = processing_geometry_boundary_check(grid_size_meter, dam_biggest_water_area, gdf_dam, multiprocessing)
+    # numba_gridding(grid_size_meter, dam_biggest_water_area, gdf_dam)
 
     return grid
 
