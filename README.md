@@ -1,52 +1,54 @@
-# DARP: Divide Areas Algorithm for Optimal Multi-Robot Coverage Path Planning
+# (Offline) Lake Bathymetry Scanning
+This project aims to divide a lake area into several regions, optimize the region size and shape and use path planning to calculate a WGS 84 conform path. This is one step of my universities [RoBiMo project](https://tu-freiberg.de/en/robimo) to automatically scan the subsurface of a lake by a [boat drone](https://www.youtube.com/watch?v=8xZVimh9f-8).
+See an example scan in 3D at [sketchfab.com](https://sketchfab.com/3d-models/riesenstein-scientific-diving-center-freiberg-5f30ea70c20e447eb5e121b51e5ae3f7)!
 
-This is a fork of the https://github.com/alice-st/DARP DARP-Algorithm python project.
+### Motivation & Conditions:
+
+A small boat drone with a bathymetric scanner can only move a certain distance until its battery is empty and needs a refill.
+Dividing the lake into regions with a defined number of tiles is one step. Rearranging the grid around every drone's start point by the DARP algorithm in used to find an optimal solution considered the distance of every tile inside the lake area.
+
+After finding the optimal regions a path planning algorithm has to find a way with the lowest number of turns and the highest number of longest possible line segments. This way through every region will be exportable as [WGS 84 (EPSG:4326)](https://en.wikipedia.org/wiki/World_Geodetic_System) path for usage in automatic path finding programs.  
+
+
+### DARP: Divide Areas Algorithm for Optimal Multi-Robot Coverage Path Planning
+
+This is a fork of the [DARP Python Project](https://github.com/alice-st/DARP) with its Java source the original [DARP Java Project](https://github.com/athakapo/DARP).
 
 Look up the original project for further details, how the algorithm works and all links.
 
-## Example area division and pathfinding
+## What to expect from this project
 
-* start_point 1 (17, 1) - 40% map area (portion 0.4)
-* start_point 2 (5, 28) - 30%
-* start_point 3 (27, 21) - 30%
+Here is an example of the DARP calculation as animation which shows the ongoing rearranging of tiles every 5th iteration before reaching the final result.
 
-Effective number of tiles: 722
+Start parameters have been:
+ * lake [Talsperre Malter](https://wiwosm.toolforge.org/osm-on-ol/kml-on-ol.php?lang=de&uselang=de&params=50.921944444444_N_13.653055555556_E_dim%3A1000_region%3ADE-SN_type%3Awaterbody&title=Talsperre_Malter&secure=1&zoom=15&lat=50.92194&lon=13.65306&layers=B000000FTFT)
+ * map size `(774, 552)` tiles (every tile's edge length is 3 meter)
+ * `(63,217),(113,195),(722,326)` as initial positions meaning 3 drone start points
+ * `[0.3, 0.2, 0.5]` have been the potions (_no fixed number of tiles yet_)
+ * random influence: `0.0001`
+ * criterion variation: `0.01 `
+ * importance `False`
 
-Final assignment matrix (228 iterations, tiles per robot [289. 217. 216.])
+| Talsperre Malter DARP animation                                                 | Talsperre Malter result image                                 |
+|---------------------------------------------------------------------------------|----------------------------------------------------------------|
+| ![TalsperreMalter_DARP_animation.gif](media/TalsperreMalter_DARP_animation.gif) | ![TalsperreMalter_result.jpg](media/TalsperreMalter_result.jpg) |
 
-![](cave_map_animation.gif)
+| Example grid generation                                 |
+|---------------------------------------------------------|
+| ![TalsperreMalter_grid](media/TalsperreMalter_grid.jpg) |
 
-## Important Changes
-I recommend using an IDE like PyCharm to work with this python program.
-
-My main script **darpinPoly.py** works without input/arguments.
-
-You can change the path of a picture to whatever you like (more maps to play with inside _test_maps_)
-The pictures of maps to analyze need transparent pixels as obstacles. All other pixels count as tiles to use for area calculation and pathfinding. The picture size is restricted too (look into **Visualization.py**)
-
-Change the portions sizes (and trigger **not_equal_portions**) and robot **start_points** in **darpinPoly** and change triggers like **importance** to play around with the results.
-
-## Dependencies
-The same as the original project:
-
-* Python version >= 3.6.14 (I'm working with Python 3.9.9)
-* OpenCV version >= 4.5.2.54
-* Pygame version >= 2.0.1
-* Scipy version >= 1.7.1
-* Pillow
-
-To apply my working dependencies use pipenv.
-
-## Installation and Running
-
-* clone repo
-* to get all dependencies install pipenv via pip
-* `pipenv install`
-* change some values or the map (described above) and run **darpinPoly.py**
-* have fun
-
-## ToDo
-- [x] fix DARP 
+## Work in Progress
+- [x] fix DARP algorithm
 - [x] get rid of the element-wise matrix manipulation loops by using numpy
-- [ ] increase visualisation screen size or output resolution to be dynamic for bigger maps
-- [ ] future features 
+- [x] make area input size dynamical
+- [x] clear project of bloat / unused code and array generations
+- [x] gridding of geospacial data of any given lake(area) into tiles with a defined edge length (using [geopandas](https://geopandas.org/en/stable/getting_started/introduction.html) and [shapely](https://shapely.readthedocs.io/en/stable/project.html)) and use as input for DARP
+- [x] using python [multiprocessing](https://docs.python.org/3/library/multiprocessing.html) to speed up the grid generation
+- [x] generate gif animation and video of calculation process
+- [x] speed up DARP calculations by using [numba](https://numba.readthedocs.io/en/stable/index.html)
+- [x] optimize (numba jitted) code
+- [ ] take defined number of tiles per drone start point as input (keep alternative `portions`?)
+- [ ] transformation of path planning way for every region to WGS 84 path
+- [ ] divide area even further: create layers for inner and outer region inside lake area / rework gridding
+- [ ] using multiple CPU cores to calculate different areas
+- [ ] _(optional) build GUI for users to define areas and (number of) layers manually_
