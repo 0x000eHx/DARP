@@ -6,7 +6,6 @@ import numpy as np
 import math
 from multiprocessing import Process, Queue, cpu_count
 import queue
-from numba import njit, jit, prange
 
 
 def get_long_diff_in_meter(grid_size_meter: float, startpoint_lat_long_tuple: tuple):
@@ -102,44 +101,6 @@ def processing_geometry_boundary_check(grid_size, selected_area, selected_gdf, m
     return grid
 
 
-@jit()  # @njit(parallel=True)
-def numba_gridding(grid_size, selected_area, selected_gdf):
-    """
-    NOT WORKING
-
-    :param grid_size:
-    :param selected_area:
-    :param selected_gdf:
-    :return:
-    """
-    xmin, ymin, xmax, ymax = selected_gdf.total_bounds
-
-    # cell tile is one meter in lat/long, use centroid of area x, y values from geopandas for reference
-    # latitude (x diff), longitude (y diff)
-    cell_height, cell_width = get_long_diff_in_meter(grid_size, (selected_area.centroid.y, selected_area.centroid.x))
-
-    rows = sorted(np.arange(ymin, ymax + cell_height, cell_height), reverse=True)  # scan from top to bottom
-    columns = np.arange(xmin, xmax + cell_width, cell_width)  # scan from left to right
-
-    grid = np.full((len(rows), len(columns)), False, dtype=bool)
-
-    xid = 0
-    for x0 in prange(columns):
-        yid = 0
-        for y0 in prange(rows):
-            x1 = x0 - cell_width
-            y1 = y0 + cell_height
-            new_cell = shapely.geometry.box(x0, y0, x1, y1)
-            if new_cell.within(selected_area):
-                grid[yid][xid] = True
-            else:
-                pass
-            yid += yid
-        xid += xid
-
-    return grid
-
-
 def get_grid_array(dam_file_name: str, grid_size_meter: float, multiprocessing=True):
 
     dam_geojson_filepath = Path("dams_single_geojsons", dam_file_name)
@@ -154,4 +115,3 @@ def get_grid_array(dam_file_name: str, grid_size_meter: float, multiprocessing=T
     # numba_gridding(grid_size_meter, dam_biggest_water_area, gdf_dam)
 
     return grid
-
