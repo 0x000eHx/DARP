@@ -1,4 +1,3 @@
-# import matplotlib.pyplot
 import numpy as np
 import copy
 import sys
@@ -9,7 +8,6 @@ from tqdm.auto import tqdm
 import imageio
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
-
 import os
 from pyinstrument import Profiler
 from numba import njit
@@ -19,28 +17,51 @@ np.set_printoptions(threshold=sys.maxsize)
 
 
 @njit
-def seed(a=123):
+def seed(a=42):
     np.random.seed(a)
 
 
 def check_start_positions(start_positions, area: np.ndarray):
     for position in start_positions:
-        # TODO check if there are obstacle cells (False) around start position cell as area boundary check
-        if not area[position]:
+        if not (0 <= position[0] < area.shape[0]) or not (0 <= position[1] < area.shape[1]):
             print("Start position: " + str(position) + " is not inside the given area!")
+            return False
+        elif not area[position]:
+            print("Start position: " + str(position) + " is on a obstacle tile inside the given area!")
             return False
     return True
 
 
 def check_portions(start_positions, portions):
+
     if len(start_positions) != len(portions):
         print("Number of portions and robot start positions don't match. One portion should be defined for each drone.")
         return False
-    s = sum(portions)
-    if abs(s - 1) >= 0.0001:
+    elif abs(sum(portions) - 1) >= 0.0001:
         print("Sum of portions has to be 1!")
         return False
-    return True
+    else:
+        for one in portions:
+            if one > 0.5:
+                print("One portion is bigger than 50%. This could increase the amount of tiles to rearrange and calculation time!")
+            if one < 0:
+                print("No negative portion value allowed!")
+                return False
+        return True
+
+
+def check_array_continuity(area: np.ndarray):
+    connectivity = np.zeros(area.shape)
+
+    mask = np.where(area)
+    connectivity[mask[0], mask[1]] = 255
+    image = np.uint8(connectivity)
+    num_labels, labels_im = cv2.connectedComponents(image, connectivity=4)
+    if num_labels > 2:
+        print("The given area MUST not have unreachable and/or closed shape regions!")
+        return False
+    else:
+        return True
 
 
 @njit(cache=True, fastmath=True)  # cache=True
@@ -303,8 +324,11 @@ class DARP:
             print("Portions and number compared to robot start positions work out, continuing...")
             self.Rportions = portions
 
-        self.rows, self.cols = area_bool.shape
+        if not check_array_continuity(area_bool):
+            print("Given area is a divided into several not connected segments. Abort!")
+            sys.exit(3)
 
+        self.rows, self.cols = area_bool.shape
         self.visualization = visualization  # should the results get presented in pygame
         self.video_export = video_export  # should steps of changes in the assignment matrix get written down
         self.MaxIter = max_iter
@@ -320,7 +344,7 @@ class DARP:
         self.AllDistances, self.non_obstacle_positions, self.termThr, self.Notiles, self.DesireableAssign, self.TilesImportance, self.MinimumImportance, self.MaximumImportance, self.effectiveTileNumber = construct_Assignment_Matrix(
             self.GridEnv_bool, List(start_positions), List(portions))
         measure_end = time.time()
-        print("Elapsed time construct_Assignment_Matrix(): ", (measure_end - measure_start), " sec")
+        print("Measured time construct_Assignment_Matrix(): ", (measure_end - measure_start), " sec")
         print("Effective number of tiles: ", self.effectiveTileNumber)
 
         self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=np.uint8)
