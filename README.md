@@ -16,7 +16,7 @@ This is a fork of the [DARP Python Project](https://github.com/alice-st/DARP) wi
 
 Look up the original project for further details, how the algorithm works and all links.
 
-## What to expect from this project
+## Current Status
 
 Here is an example of the DARP calculation as animation which shows the ongoing rearranging of tiles every 5th iteration before reaching the final result.
 
@@ -28,6 +28,9 @@ Start parameters have been:
  * random influence: `0.0001`
  * criterion variation: `0.01 `
  * importance `False`
+ * image_export `True`
+ * video_export `True` _(keep in mind: this slows down the iteration speed a lot)_
+
 
 | Talsperre Malter DARP animation                                                 | Talsperre Malter result image                                 |
 |---------------------------------------------------------------------------------|----------------------------------------------------------------|
@@ -37,18 +40,28 @@ Start parameters have been:
 |---------------------------------------------------------|
 | ![TalsperreMalter_grid](media/TalsperreMalter_grid.jpg) |
 
+## Installation and Setup
+You need [Anaconda](https://www.anaconda.com/products/individual#Downloads). Download all necessary packages and libraries by importing the environment `conda_gridding_darp_enviroment.yaml` file inside the Anaconda Navigator.
+This creates a fresh environment for this project.
+
+To run this project start `multiRobotPathPlanner.py` inside the new environment. Most important triggers and parameters are situated in the `__main__`. The example lake geojson-file above shows "Talsperre Malter.geojson", but I included more example files of lakes in Saxony (Germany) in the `dams_single_geojsons` folder.
+If you want to play around with you own files I included some code to filter geojson-files with geopandas in the `extract.py` file.
+
+I'll add more code to download up2date geo spacial data soon. Then it will be possible to choose which area to download from a list or whatever. Still in progress...
+
 ## Work in Progress
-- [x] fix DARP algorithm
+- [x] contributed fix of DARP algorithm to DARP-Python project
 - [x] get rid of the element-wise matrix manipulation loops by using numpy
-- [x] make area input size dynamical
-- [x] clear project of bloat / unused code and array generations
+- [x] remove area input size restrictions, now flexible
+- [x] clear project of bloat / unused code and array generations (to increase speed)
 - [x] gridding of geospacial data of any given lake(area) into tiles with a defined edge length (using [geopandas](https://geopandas.org/en/stable/getting_started/introduction.html) and [shapely](https://shapely.readthedocs.io/en/stable/project.html)) and use as input for DARP
 - [x] using python [multiprocessing](https://docs.python.org/3/library/multiprocessing.html) to speed up the grid generation
-- [x] generate gif animation and video of calculation process
+- [x] generate gif animation and video of calculation process + final assignment matrix image
 - [x] speed up DARP calculations by using [numba](https://numba.readthedocs.io/en/stable/index.html)
-- [x] optimize (numba jitted) code
-- [ ] take defined number of tiles per drone start point as input (keep alternative `portions`?)
-- [ ] transformation of path planning way for every region to WGS 84 path
+- [x] optimize (numba jitted) loops to only operate inside relevant tiles inside the grid (speedup)
+- [ ] take defined number of tiles per drone start point as input (keep alternative `portions`?) and recommend a minimum number of start points
+- [ ] transformation of path planning way for every region to WGS 84 path + save to file
+- [ ] numba speedup for kruskal and path planning?!
 - [ ] divide area even further: create layers for inner and outer region inside lake area / rework gridding
-- [ ] using multiple CPU cores to calculate different areas
-- [ ] _(optional) build GUI for users to define areas and (number of) layers manually_
+- [ ] using multiple processes to calculate different regions of a lake and make calculation more efficient
+- [ ] keep usage of pygame? _(optional) build GUI for users to define areas and (number of) layers manually_

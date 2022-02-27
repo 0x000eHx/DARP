@@ -184,12 +184,13 @@ if __name__ == '__main__':
 
     grid_cells = get_grid_array(dam_file_name, grid_sides_in_meter, multiprocessing=True)
 
-    start_points = [(269, 158), (529, 281), (564, 304)]  # get_random_start_points(5, grid_cells)
+    start_points = [(63, 217), (113, 195), (722, 326)]  # get_random_start_points(5, grid_cells)
+    # [(359, 114), (416, 37), (216, 178)] and [0.4, 0.3, 0.3] -> overflow maxiter
     # [(269, 158), (529, 281), (564, 304)] and portions [0.4, 0.3, 0.3] --> good ones
     # [(230, 180), (243, 178), (212, 176)] damned start points, portions [0.3, 0.2, 0.5]
     # [(63, 217), (113, 195), (722, 326)] better [0.4, 0.3, 0.3] or [0.3, 0.2, 0.5]
 
-    portions = [0.4, 0.3, 0.3]  # [0.3, 0.1, 0.2, 0.1, 0.3]
+    portions = [0.3, 0.2, 0.5]  # [0.3, 0.1, 0.2, 0.1, 0.3]
     # want equal portions?
     if False:
         portions = []
@@ -203,7 +204,7 @@ if __name__ == '__main__':
     importance = False
     visualize = False
     image_export_final_assignment_matrix = True
-    video_export_assignment_matrix_changes = True
+    video_export_assignment_matrix_changes = False
 
     multiRobotPathPlanner(grid_cells, np.uintc(MaxIter), CCvariation, randomLevel, np.uintc(dcells), importance,
                           start_points, portions, visualize, image_export_final_assignment_matrix, dam_file_name,
