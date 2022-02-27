@@ -1,3 +1,4 @@
+import sys
 import geopandas as gpd
 from pathlib import Path
 from tqdm.auto import tqdm
@@ -101,17 +102,30 @@ def processing_geometry_boundary_check(grid_size, selected_area, selected_gdf, m
     return grid
 
 
+def check_grid_size(grid_size_meter: float):
+    if grid_size_meter <= 0:
+        print("No negative value or zero possible for grid edge length. Abort!")
+        return False
+    elif grid_size_meter > 500:
+        print("Grid edge length value bigger than 500m. Depending on the area size you might not get a result back.")
+    return True
+
+
 def get_grid_array(dam_file_name: str, grid_size_meter: float, multiprocessing=True):
 
     dam_geojson_filepath = Path("dams_single_geojsons", dam_file_name)
     gdf_dam = gpd.read_file(dam_geojson_filepath)
 
     gdf_dam_exploded = gdf_dam.geometry.explode().tolist()
+    # search for the biggest area inside the lake geojson-file, this must be the lake itself
+    #  all other included waterways or whatever will be excluded
     dam_biggest_water_area = max(gdf_dam_exploded, key=lambda a: a.area)
 
-    # TODO check grid_size_meter for appropriate value
-
-    grid = processing_geometry_boundary_check(grid_size_meter, dam_biggest_water_area, gdf_dam, multiprocessing)
-    # numba_gridding(grid_size_meter, dam_biggest_water_area, gdf_dam)
-
-    return grid
+    if check_grid_size(grid_size_meter):
+        grid = processing_geometry_boundary_check(grid_size_meter, dam_biggest_water_area, gdf_dam, multiprocessing)
+        if not grid.any():
+            print("No grid possible to generate inside given area with grid_size_meter value of ", grid_size_meter, "m")
+            sys.exit(4)
+        return grid
+    else:
+        sys.exit(5)

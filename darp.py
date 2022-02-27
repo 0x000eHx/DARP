@@ -51,12 +51,11 @@ def check_portions(start_positions, portions):
 
 
 def check_array_continuity(area: np.ndarray):
-    connectivity = np.zeros(area.shape)
+    connectivity_img = np.zeros(area.shape, dtype=np.uint8)
 
     mask = np.where(area)
-    connectivity[mask[0], mask[1]] = 255
-    image = np.uint8(connectivity)
-    num_labels, labels_im = cv2.connectedComponents(image, connectivity=4)
+    connectivity_img[mask[0], mask[1]] = 255
+    num_labels, labels_im = cv2.connectedComponents(image=connectivity_img, connectivity=4)
     if num_labels > 2:
         print("The given area MUST not have unreachable and/or closed shape regions!")
         return False
@@ -292,7 +291,6 @@ class DARP:
                  visualization: bool, video_export: bool, import_file_name: str):
 
         print("Following dam file will be processed: " + import_file_name)
-        print("Initial Conditions Defined:")
         print("Grid Dimensions: ", str(area_bool.shape))
         print("Robot Number: ", len(start_positions))
         print("Initial Robot positions: ", start_positions)
@@ -325,7 +323,7 @@ class DARP:
             self.Rportions = portions
 
         if not check_array_continuity(area_bool):
-            print("Given area is a divided into several not connected segments. Abort!")
+            print("Given area is divided into several not connected segments. Abort!")
             sys.exit(3)
 
         self.rows, self.cols = area_bool.shape

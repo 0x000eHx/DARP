@@ -1,4 +1,4 @@
-name: DARP
+name: conda_gridding_darp_enviroment
 channels:
   - conda-forge
   - defaults
@@ -51,7 +51,6 @@ dependencies:
   - liblapack=3.9.0=5_hd5c7e75_netlib
   - liblapacke=3.9.0=5_hd5c7e75_netlib
   - libnetcdf=4.8.1=h6685c40_1
-  - libopencv=4.5.5=py39h606fa8f_0
   - libpng=1.6.37=h2a8f88b_0
   - libpq=12.9=hb652d5d_1
   - libprotobuf=3.19.4=h7755175_0
@@ -90,7 +89,6 @@ dependencies:
   - numpy=1.20.3=py39ha4e8547_0
   - numpy-base=1.20.3=py39hc2deb75_0
   - olefile=0.46=pyhd3eb1b0_0
-  - opencv=4.5.5=py39hcbf5309_0
   - openjpeg=2.4.0=h4fc8c34_0
   - openssl=1.1.1m=h2bbff1b_0
   - packaging=21.3=pyhd3eb1b0_0
@@ -98,7 +96,6 @@ dependencies:
   - pillow=8.3.1=py39h4fa10fc_0
   - pip=21.2.4=py39haa95532_0
   - proj=6.2.1=h3758d61_0
-  - py-opencv=4.5.5=py39h832f523_0
   - pyparsing=3.0.4=pyhd3eb1b0_0
   - pyproj=2.6.1.post1=py39h593ac45_1
   - pyqt=5.12.3=py39hcbf5309_8
@@ -134,7 +131,7 @@ dependencies:
   - zstd=1.5.0=h19a0ad4_1
   - pip:
     - imageio-ffmpeg==0.4.5
-    - numba-scipy==0.3.0
+    - opencv-python==4.5.4.60
     - pygame==2.1.2
     - pyinstrument==4.1.1
     - scipy==1.6.2
