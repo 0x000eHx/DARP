@@ -29,7 +29,7 @@ Start parameters have been:
  * criterion variation: `0.01 `
  * importance `False`
  * image_export `True`
- * video_export `True` _(keep in mind: this slows down the iteration speed a lot)_
+ * video_export `True` _(keep in mind: this slows down the iteration speed)_
 
 
 | Talsperre Malter DARP animation                                                 | Talsperre Malter result image                                 |
@@ -47,14 +47,14 @@ This creates a fresh environment for this project.
 ## Run & Setup
 
 To run this project start `multiRobotPathPlanner.py` inside the new environment. Most important triggers and parameters are situated in the `__main__`. The example lake geojson-file above shows "Talsperre Malter.geojson", but I included more example files of lakes in Saxony (Germany) in the `dams_single_geojsons` folder. Saxony completely and another water area only file is included inside `overall_geojsons`.
-If you want to play around with your own files I included some code to filter geojson-files with geopandas in the `extract.py` file. At the start of the grid generation
+If you want to play around with your own files I included some code to filter geojson-files with geopandas in the `extract.py` file.
 
 I'll add more code to download and use online geo spacial resources soon. Then it will be possible to choose which lake/area to download from a list or whatever. Still in progress...
 At the moment it is only possible to analyze offline geojson-files. Inside the grid generation the geojson-file gets filtered for the biggest area to analyze, but at creation time of the DARP instance it checks for sanity and continuity anyway.   
 
 Set up the impact of the video export inside the DARP to your likings. The video export decreases iteration speed drastically at the moment. So I create and write a video frame every 5th iteration. Increase or decrease this "framerate" inside `video_export_add_frame`. If the assignment steps are not necessary you can turn the video export off in the `__main__` of `multiRobotPathPlanner.py`.
 
-If you don't want to define your initial start points all the time I created `get_random_start_points` helper function to search for a certain number. This does set points inside the possible tiles at the banks of the left side. Always match the number and size of the portions in `__main__` to them.
+If you don't want to define your initial start points all the time I created `get_random_start_points` helper function to find a defined amount of tiles at the banks of the left side. Always match the number and size of the portions in `__main__` to them.
 
 ## Work in Progress
 - [x] contributed fix of DARP algorithm to DARP-Python project
@@ -68,7 +68,8 @@ If you don't want to define your initial start points all the time I created `ge
 - [x] optimize (numba jitted) loops to only operate inside relevant tiles inside the grid (speedup)
 - [ ] take defined number of tiles per drone start point as input (keep alternative `portions`?) and recommend a minimum number of start points
 - [ ] transformation of path planning way for every region to WGS 84 path + save to file
-- [ ] numba speedup for kruskal and path planning?!
+- [ ] create and read a settings yaml file which holds all triggers and important values
 - [ ] divide area even further: create layers for inner and outer region inside lake area / rework gridding
+- [ ] numba speedup for kruskal and path planning?!
 - [ ] using multiple processes to calculate different regions of a lake and make calculation more efficient
 - [ ] keep usage of pygame? _(optional) build GUI for users to define areas and (number of) layers manually_

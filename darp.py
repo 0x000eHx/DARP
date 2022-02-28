@@ -379,9 +379,8 @@ class DARP:
 
     def video_export_add_frame(self, iteration=0):
         framerate = 5
-        write_frame = (iteration % framerate) == 0
 
-        if write_frame or iteration == 0:
+        if (iteration % framerate) == 0 or iteration == 0:
             uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))  # TODO interpolate or scale?
             temp_img = Image.fromarray(uint8_array)  # mode="RGB"
             font = ImageFont.truetype("arial.ttf", 9)
