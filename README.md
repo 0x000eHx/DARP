@@ -56,7 +56,15 @@ Set up the impact of the video export inside the DARP to your likings. The video
 
 If you don't want to define your initial start points all the time I created `get_random_start_points` helper function to find a defined amount of tiles at the banks of the left side. Always match the number and size of the portions in `__main__` to them.
 
-## Work in Progress
+## Work in Progress - Random Influence
+
+With difficult start parameters like many start points near to each other DARP sometimes struggles in finding an optimal solution on big maps/arrays. In these cases letting it iterate over 150k times won't let it end with success.
+My experiments on this matter showed, that using a higher random influence (like 0.0005) show better results at finding global optimums but lack to find connectivity for all tiles before reassigning and rearranging them again.
+A lower random influence value (like 0.0001) does this job just fine...
+My suggestion is lowering the random influence when hitting a preferable relation of `DesirableAssignments` to current `ArrayOfElements`. I need to find and define a threshold for this kind of check...
+
+
+## Tasks:
 - [x] contributed fix of DARP algorithm to DARP-Python project
 - [x] get rid of the element-wise matrix manipulation loops by using numpy
 - [x] remove area input size restrictions, now flexible
@@ -66,6 +74,8 @@ If you don't want to define your initial start points all the time I created `ge
 - [x] generate gif animation and video of calculation process + final assignment matrix image
 - [x] speed up DARP calculations by using [numba](https://numba.readthedocs.io/en/stable/index.html)
 - [x] optimize (numba jitted) loops to only operate inside relevant tiles inside the grid (speedup)
+- [x] normalize Metric Matrix to a range between 0 and 10 if values near system float maximum (atm checking for highest array value smaller than max system float value; checking needs calc time and decreases loop speed)
+- [ ] optimize random influence?!
 - [ ] take defined number of tiles per drone start point as input (keep alternative `portions`?) and recommend a minimum number of start points
 - [ ] transformation of path planning way for every region to WGS 84 path + save to file
 - [ ] create and read a settings yaml file which holds all triggers and important values

@@ -109,19 +109,19 @@ def CalcConnectedMultiplier(non_obs_pos: np.ndarray, cc_variation, dist1, dist2)
 
 
 @njit(cache=True, fastmath=True)
-def calculateCriterionMatrix(importance_trigger, TilesImportance, MinimumImportance,
+def calculateCriterionMatrix(importance_trigger, TilesImportanceMatrix, MinimumImportance,
                              MaximumImportance, correctionMult, smallerthan_zero):
     """
     Generates a new correction multiplier matrix.
-    If self.Importance is True: TilesImportance influence is calculated.
+    If self.Importance is True: TilesImportanceMatrix influence is calculated.
     """
-    returnCrit = np.zeros(TilesImportance.shape)
+    returnCrit = np.zeros(TilesImportanceMatrix.shape)
     if importance_trigger:
         if smallerthan_zero:
-            returnCrit = (TilesImportance - MinimumImportance) * (
+            returnCrit = (TilesImportanceMatrix - MinimumImportance) * (
                     (correctionMult - 1) / (MaximumImportance - MinimumImportance)) + 1
         else:
-            returnCrit = (TilesImportance - MinimumImportance) * (
+            returnCrit = (TilesImportanceMatrix - MinimumImportance) * (
                     (1 - correctionMult) / (MaximumImportance - MinimumImportance)) + correctionMult
     else:
         returnCrit[:, :] = correctionMult
@@ -400,7 +400,6 @@ class DARP:
 
         if self.visualization:
             self.assignment_matrix_visualization.placeCells()
-            # time.sleep(0.1)
 
         while self.termThr <= self.Dynamic_Cells and not success:
             downThres = (self.Notiles - self.termThr * (len(self.init_robot_pos) - 1)) / (
