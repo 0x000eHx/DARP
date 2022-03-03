@@ -63,7 +63,7 @@ def check_array_continuity(area: np.ndarray):
         return True
 
 
-@njit(cache=True, fastmath=True)  # cache=True
+@njit(cache=True, fastmath=True)
 def assign(non_obs_pos: np.ndarray, Assignment_Matrix: np.ndarray, Metric_Matrix: np.ndarray, ArrayOfElements: np.ndarray):
     for cell in non_obs_pos:
         # argmin index is same as index of robot in initial_positions array
@@ -223,13 +223,15 @@ def normalize_metric_matrix(non_obs_pos: np.ndarray, metric_matrix: np.ndarray):
     minv = np.amin(metric_matrix)
 
     for cell in non_obs_pos:
-        metric_matrix[:, cell[0], cell[1]] = 10 * (metric_matrix[:, cell[0], cell[1]] - minv) / (maxV - minv)
+        metric_matrix[:, cell[0], cell[1]] -= minv
+        metric_matrix[:, cell[0], cell[1]] /= (maxV - minv)
+        metric_matrix[:, cell[0], cell[1]] *= 10
+    return metric_matrix
 
 
 @njit(cache=True, fastmath=True)
-def check_for_near_float64_overflow(non_obs_pos: np.ndarray, metric_matrix: np.ndarray):
+def check_for_near_float64_overflow(metric_matrix: np.ndarray):
     if np.amax(metric_matrix) > (np.finfo(np.float64).max / 10):
-        normalize_metric_matrix(non_obs_pos, metric_matrix)
         return True
     else:
         return False
@@ -283,6 +285,25 @@ def construct_Assignment_Matrix(area_bool: np.ndarray, initial_positions: List, 
                         MinimumImportance[idx] = TilesImportance[idx, x, y]
 
     return AllDistances, non_obstacle_positions, termThr, Notiles, DesireableAssign, TilesImportance, MinimumImportance, MaximumImportance, effectiveSize
+
+
+@njit(cache=True, fastmath=True)
+def check_assignment_state(thresh: int,
+                           connected_robot_regions: np.ndarray,
+                           desirable_tile_assignment: np.ndarray,
+                           current_tile_assignment: np.ndarray):
+    """
+    Determines if the finishing criterion of the DARP algorithm is met.
+    :param current_tile_assignment:
+    :param desirable_tile_assignment:
+    :param thresh: Sets the possible difference between the number of tiles per robot and their desired assignment
+    :param connected_robot_regions: needs array of 'is the tile area of robot x fully connected' or not
+    :return: True, if criteria fits; False, if criteria aren't met
+    """
+    for idx, r in enumerate(connected_robot_regions):
+        if np.absolute(desirable_tile_assignment[idx] - current_tile_assignment[idx]) > thresh or not connected_robot_regions[idx]:
+            return False
+    return True
 
 
 class DARP:
@@ -485,8 +506,9 @@ class DARP:
                     self.assignment_matrix_visualization.placeCells(iteration_number=iteration)
                     # time.sleep(0.1)
 
-                if check_for_near_float64_overflow(self.non_obstacle_positions, self.MetricMatrix):
-                    print("MetricMatrix normalized")
+                if check_for_near_float64_overflow(self.MetricMatrix):
+                    self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.MetricMatrix)
+                    print("MetricMatrix normalized\n")
 
                 # End performance analyses
                 # profiler.stop()
@@ -494,7 +516,7 @@ class DARP:
                 # profiler.open_in_browser()
                 ##########################
 
-                if self.IsThisAGoalState(self.termThr, ConnectedRobotRegions):
+                if check_assignment_state(self.termThr, ConnectedRobotRegions, self.DesireableAssign, self.ArrayOfElements):
                     time_stop = time.time()
                     success = True
                     absolut_iterations += iteration
@@ -521,15 +543,3 @@ class DARP:
         ind = np.where(self.A < len(self.init_robot_pos))
         temp = (self.A[ind].astype(int),) + ind
         self.BinaryRobotRegions[temp] = True
-
-    def IsThisAGoalState(self, thresh, connected_robot_regions):
-        """
-        Determines if the finishing criterion of the DARP algorithm is met.
-        :param thresh: Sets the possible difference between the number of tiles per robot and their desired assignment
-        :param connected_robot_regions: needs array of 'is the tile area of robot x fully connected' or not
-        :return: True, if criteria fits; False, if criteria aren't met
-        """
-        for idx, r in enumerate(self.init_robot_pos):
-            if np.absolute(self.DesireableAssign[idx] - self.ArrayOfElements[idx]) > thresh or not connected_robot_regions[idx]:
-                return False
-        return True

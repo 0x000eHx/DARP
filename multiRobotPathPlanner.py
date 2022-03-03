@@ -197,14 +197,14 @@ if __name__ == '__main__':
         for idx, drone in enumerate(start_points):
             portions.append(1 / len(start_points))
 
-    MaxIter = 80000
+    MaxIter = 100000
     CCvariation = 0.01
-    randomLevel = 0.0001
+    randomLevel = 0.00005
     dcells = 100
     importance = False
     visualize = False
     image_export_final_assignment_matrix = True
-    video_export_assignment_matrix_changes = False
+    video_export_assignment_matrix_changes = True
 
     multiRobotPathPlanner(grid_cells, np.uintc(MaxIter), CCvariation, randomLevel, np.uintc(dcells), importance,
                           start_points, portions, visualize, image_export_final_assignment_matrix, dam_file_name,
