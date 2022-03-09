@@ -129,3 +129,21 @@ def get_grid_array(dam_file_name: str, grid_size_meter: float, multiprocessing=T
         return grid
     else:
         sys.exit(5)
+
+
+def get_random_start_points_list(number_of_start_points: int, area_bool: np.ndarray):
+    start_coordinates = set()  # if a set, then no duplicates, but unordered and unindexed
+    rows, cols = area_bool.shape
+
+    while True:
+        random_row = np.random.randint(0, rows)
+        random_col = np.random.randint(0, cols)
+
+        if area_bool[random_row, random_col]:
+            start_coordinates.add((random_row, random_col))
+
+        if len(start_coordinates) == number_of_start_points:
+            break
+
+    return list(start_coordinates)  # back to list, cause we need a index later
+

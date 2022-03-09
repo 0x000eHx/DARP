@@ -54,7 +54,7 @@ At the moment it is only possible to analyze offline geojson-files. Inside the g
 
 Set up the impact of the video export inside the DARP to your likings. The video export decreases iteration speed drastically at the moment. So I create and write a video frame every 5th iteration. Increase or decrease this "framerate" inside `video_export_add_frame`. If the assignment steps are not necessary you can turn the video export off in the `__main__` of `multiRobotPathPlanner.py`.
 
-If you don't want to define your initial start points all the time I created `get_random_start_points` helper function to find a defined amount of tiles at the banks of the left side. Always match the number and size of the portions in `__main__` to them.
+If you don't want to define your initial start points all the time I created `get_random_start_points_list` helper function to find a defined amount of tiles at the banks of the left side. Always match the number and size of the portions in `__main__` to them.
 
 ## Work in Progress - Random Influence
 
