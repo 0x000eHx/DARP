@@ -453,15 +453,15 @@ class DARP:
         measure_end = time.time()
         print("Elapsed time update(): ", (measure_end - measure_start), "sec")
 
-    def video_export_add_frame(self, iteration=0):
+    def video_export_add_frame(self, current_ArrayOfElements: np.ndarray, iteration: int):
         framerate = 5
 
         if (iteration % framerate) == 0 or iteration == 0:
             uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))  # TODO interpolate or scale?
             temp_img = Image.fromarray(uint8_array)  # mode="RGB"
             font = ImageFont.truetype("arial.ttf", 9)
-            txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions: {str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nIterations: {iteration}'
-            ImageDraw.Draw(temp_img).multiline_text((3, 3), txt, spacing=2, font=font, fill="red")  # fill="red"
+            txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(current_ArrayOfElements)}\nIteration: {iteration}'
+            ImageDraw.Draw(temp_img).multiline_text((3, 3), txt, spacing=2, font=font)
             self.gif_writer.append_data(np.asarray(temp_img))
 
     def update(self):
@@ -472,10 +472,13 @@ class DARP:
         assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
 
         if self.video_export:
-            self.video_export_add_frame()
+            self.video_export_add_frame(self.ArrayOfElements, absolut_iterations)
 
         if self.visualization:
             self.assignment_matrix_visualization.placeCells()
+
+        print("update() Start:\nDesirable Assignments:", self.DesirableAssign,
+              ", Tiles per Robot:", self.ArrayOfElements)
 
         time_start = time.time()
         while self.termThr <= self.Dynamic_Cells and not success:
@@ -484,7 +487,7 @@ class DARP:
             upperThres = (self.Notiles + self.termThr) / (self.Notiles * len(self.init_robot_pos))
 
             # main optimization loop
-            for iteration in tqdm(range(self.MaxIter)):
+            for _ in tqdm(range(self.MaxIter)):
 
                 # start performance analyse
                 # profiler = Profiler()
@@ -552,24 +555,26 @@ class DARP:
 
                 assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
 
+                absolut_iterations += 1
                 if self.video_export:
-                    self.video_export_add_frame(iteration)
+                    self.video_export_add_frame(self.ArrayOfElements, absolut_iterations)
 
                 if self.visualization:
-                    self.assignment_matrix_visualization.placeCells(iteration_number=iteration)
+                    self.assignment_matrix_visualization.placeCells(iteration_number=absolut_iterations)
                     # time.sleep(0.1)
 
                 if check_for_near_float64_overflow(self.MetricMatrix):
                     self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.MetricMatrix)
                     print("\nMetricMatrix normalized\n")
 
-                if check_assignment_state(self.termThr, ConnectedRobotRegions, self.DesirableAssign, self.ArrayOfElements):
+                if check_assignment_state(self.termThr, ConnectedRobotRegions,
+                                          self.DesirableAssign, self.ArrayOfElements):
                     time_stop = time.time()
                     success = True
-                    absolut_iterations += iteration
                     if self.video_export:
                         self.gif_writer.close()
-                    print("Final Assignment Matrix:\n(", absolut_iterations, "Iterations in", (time_stop-time_start), "sec (", absolut_iterations/(time_stop-time_start), "iter/sec)")
+                    print("Final Assignment Matrix:\n(", absolut_iterations, "Iterations in", (time_stop-time_start),
+                          "sec (", absolut_iterations/(time_stop-time_start), "iter/sec)")
                     print("Desirable Assignments:", self.DesirableAssign, ", Tiles per Robot:", self.ArrayOfElements)
                     break
 
