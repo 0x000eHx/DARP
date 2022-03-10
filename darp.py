@@ -1,5 +1,4 @@
 import numpy as np
-import copy
 import sys
 import cv2
 from Visualization import darp_area_visualization
@@ -13,11 +12,6 @@ from pyinstrument import Profiler
 from numba import njit
 
 np.set_printoptions(threshold=sys.maxsize)
-
-
-@njit
-def seed(a=42):
-    np.random.seed(a)
 
 
 def check_start_positions(start_positions, area: np.ndarray):
@@ -84,6 +78,11 @@ def check_array_continuity(area: np.ndarray):
         return False
     else:
         return True
+
+
+@njit
+def seed(a):
+    np.random.seed(a)
 
 
 @njit(fastmath=True)
@@ -270,7 +269,7 @@ def euclidian_distance_points2d(array1: np.array, array2: np.array) -> np.float_
            ) ** 0.5  # faster function with faster sqrt
 
 
-@njit(cache=True, fastmath=True)
+@njit(fastmath=True)
 def normalize_metric_matrix(non_obs_pos: np.ndarray, metric_matrix: np.ndarray):
     maxV = np.amax(metric_matrix)
     minv = np.amin(metric_matrix)
@@ -278,7 +277,7 @@ def normalize_metric_matrix(non_obs_pos: np.ndarray, metric_matrix: np.ndarray):
     for cell in non_obs_pos:
         metric_matrix[:, cell[0], cell[1]] -= minv
         metric_matrix[:, cell[0], cell[1]] /= (maxV - minv)
-        metric_matrix[:, cell[0], cell[1]] *= 10
+        metric_matrix[:, cell[0], cell[1]] *= 1000
     return metric_matrix
 
 
@@ -290,7 +289,7 @@ def check_for_near_float64_overflow(metric_matrix: np.ndarray):
         return False
 
 
-@njit(cache=True, fastmath=True)
+@njit(fastmath=True)
 def construct_assignment_matrix(area_bool: np.ndarray, initial_positions: np.ndarray, max_tiles_per_robot: int):
     rows, cols = area_bool.shape
     Notiles = rows * cols
@@ -345,6 +344,20 @@ def construct_assignment_matrix(area_bool: np.ndarray, initial_positions: np.nda
     return metrics_array, non_obstacle_positions, termThr, Notiles, DesirableAssign, importance_array, min_importance, max_importance, effectiveSize
 
 
+@njit(cache=True, fastmath=True)
+def getBinaryRobotRegions(binary_robot_regions: np.ndarray,
+                          non_obs_pos: np.ndarray,
+                          final_assignment_matrix: np.ndarray):
+    """
+    Generate a Bool Matrix for every robot's tile area.
+    :return: Manipulates BinaryRobotRegions
+    """
+    for cell in non_obs_pos:
+        for i in range(binary_robot_regions.shape[0]):
+            if i == final_assignment_matrix[cell[0], cell[1]]:
+                binary_robot_regions[i, cell[0], cell[1]] = True
+
+
 @njit(fastmath=True)
 def check_assignment_state(thresh: int,
                            connected_robot_regions: np.ndarray,
@@ -366,7 +379,7 @@ def check_assignment_state(thresh: int,
 
 class DARP:
     def __init__(self, area_bool: np.ndarray, max_iter: np.uint32, cc_variation: float, random_level: float,
-                 dynamic_cells: np.uint32, max_tiles_per_robot: int, importance: bool, start_positions: list[tuple],
+                 dynamic_cells: np.uint32, max_tiles_per_robot: int, seed_value: int, importance: bool, start_positions: list[tuple],
                  visualization: bool, video_export: bool, import_file_name: str):
 
         print("Following dam file will be processed: " + import_file_name)
@@ -374,6 +387,7 @@ class DARP:
         print("Robot Number: ", len(start_positions))
         print("Initial Robot positions: ", start_positions)
         print("Maximum number of tiles per robot:", max_tiles_per_robot)
+        print("Random Seed:", seed_value)
         print("Maximum Iterations: " + str(max_iter))
         print("Dynamic Cells Count: " + str(dynamic_cells))
         print("Importance: " + str(importance))
@@ -426,9 +440,10 @@ class DARP:
         self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=np.uint8)
         self.BinaryRobotRegions = np.full((len(self.init_robot_pos), self.rows, self.cols), False, dtype=bool)
         self.ArrayOfElements = np.zeros(len(self.init_robot_pos))
+        self.ConnectedRobotRegions = np.full(len(self.init_robot_pos), False, dtype=bool)
 
         self.color = []
-        for robot in self.init_robot_pos:
+        for _ in self.init_robot_pos:
             self.color.append(list(np.random.choice(range(256), size=3)))
 
         # End performance analyses
@@ -447,20 +462,25 @@ class DARP:
                 os.makedirs(movie_file_path.parent)
             self.gif_writer = imageio.get_writer(movie_file_path, mode='i', duration=0.15)
 
-        # seed()  # correct numba seeding
+        if seed_value > 0:
+            self.seed_value = seed_value
+        else:
+            self.seed_value = 1
+        seed(self.seed_value)  # correct numba seeding
+
         measure_start = time.time()
         self.success, self.absolute_iterations = self.update()
         measure_end = time.time()
         print("Elapsed time update(): ", (measure_end - measure_start), "sec")
 
-    def video_export_add_frame(self, current_ArrayOfElements: np.ndarray, iteration: int):
+    def video_export_add_frame(self, iteration: int, connected_regions: np.ndarray):
         framerate = 5
 
         if (iteration % framerate) == 0 or iteration == 0:
             uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))  # TODO interpolate or scale?
             temp_img = Image.fromarray(uint8_array)  # mode="RGB"
             font = ImageFont.truetype("arial.ttf", 9)
-            txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(current_ArrayOfElements)}\nIteration: {iteration}'
+            txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nSeed: {str(self.seed_value)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(self.ArrayOfElements)}\nTiles Connected:\n{str(connected_regions)}\nIteration: {iteration}'
             ImageDraw.Draw(temp_img).multiline_text((3, 3), txt, spacing=2, font=font)
             self.gif_writer.append_data(np.asarray(temp_img))
 
@@ -472,13 +492,13 @@ class DARP:
         assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
 
         if self.video_export:
-            self.video_export_add_frame(self.ArrayOfElements, absolut_iterations)
+            self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
 
         if self.visualization:
             self.assignment_matrix_visualization.placeCells()
 
         print("update() Start:\nDesirable Assignments:", self.DesirableAssign,
-              ", Tiles per Robot:", self.ArrayOfElements)
+              ", Tiles per Robot:", self.ArrayOfElements, "\nTermination threshold:", self.termThr)
 
         time_start = time.time()
         while self.termThr <= self.Dynamic_Cells and not success:
@@ -495,17 +515,16 @@ class DARP:
                 ###########################
 
                 ConnectedMultiplierArrays = np.ones((len(self.init_robot_pos), self.rows, self.cols))
-                ConnectedRobotRegions = np.full(len(self.init_robot_pos), False, dtype=bool)
                 plainErrors = np.zeros((len(self.init_robot_pos)))
                 divFairError = np.zeros((len(self.init_robot_pos)))
 
                 update_connectivity(self.connectivity, self.A, self.non_obstacle_positions)
                 for idx, robot in enumerate(self.init_robot_pos):
                     ConnectedMultiplier = np.ones((self.rows, self.cols))
-                    ConnectedRobotRegions[idx] = True
+                    self.ConnectedRobotRegions[idx] = True
                     num_labels, labels_im = cv2.connectedComponents(self.connectivity[idx, :, :], connectivity=4)
                     if num_labels > 2:
-                        ConnectedRobotRegions[idx] = False
+                        self.ConnectedRobotRegions[idx] = False
                         BinaryRobot, BinaryNonRobot = construct_binary_images(self.non_obstacle_positions, labels_im, robot)
                         ConnectedMultiplier = calc_connected_multiplier(self.non_obstacle_positions,
                                                                         self.ConnectedMultiplier_variation,
@@ -557,7 +576,7 @@ class DARP:
 
                 absolut_iterations += 1
                 if self.video_export:
-                    self.video_export_add_frame(self.ArrayOfElements, absolut_iterations)
+                    self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
 
                 if self.visualization:
                     self.assignment_matrix_visualization.placeCells(iteration_number=absolut_iterations)
@@ -567,15 +586,16 @@ class DARP:
                     self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.MetricMatrix)
                     print("\nMetricMatrix normalized\n")
 
-                if check_assignment_state(self.termThr, ConnectedRobotRegions,
+                if check_assignment_state(self.termThr, self.ConnectedRobotRegions,
                                           self.DesirableAssign, self.ArrayOfElements):
                     time_stop = time.time()
                     success = True
                     if self.video_export:
                         self.gif_writer.close()
-                    print("Final Assignment Matrix:\n(", absolut_iterations, "Iterations in", (time_stop-time_start),
-                          "sec (", absolut_iterations/(time_stop-time_start), "iter/sec)")
-                    print("Desirable Assignments:", self.DesirableAssign, ", Tiles per Robot:", self.ArrayOfElements)
+                    print("Finished Assignment Matrix Calculation:\n",
+                          absolut_iterations, "Iterations in", (time_stop-time_start),
+                          "sec;", absolut_iterations/(time_stop-time_start), "iter/sec",
+                          "\nDesirable Assignments:", self.DesirableAssign, "\nTiles per Robot:", self.ArrayOfElements)
                     break
 
                 # End performance analyses
@@ -590,15 +610,7 @@ class DARP:
                 if self.MaxIter > 10000:
                     self.MaxIter = int(self.MaxIter / 2)
                 self.termThr += 10
+                print("Increasing termination threshold to", self.termThr)
 
-        self.getBinaryRobotRegions()
+        getBinaryRobotRegions(self.BinaryRobotRegions, self.non_obstacle_positions, self.A)
         return success, absolut_iterations
-
-    def getBinaryRobotRegions(self):
-        """
-        Generate a Bool Matrix for every robot's tile area.
-        :return: Manipulates BinaryRobotRegions
-        """
-        ind = np.where(self.A < len(self.init_robot_pos))
-        temp = (self.A[ind].astype(int),) + ind
-        self.BinaryRobotRegions[temp] = True

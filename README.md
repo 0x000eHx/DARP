@@ -46,13 +46,13 @@ This creates a fresh environment for this project.
 
 ## Run & Setup
 
-To run this project start `multiRobotPathPlanner.py` inside the new environment. Most important triggers and parameters are situated in the `__main__`. The example lake geojson-file above shows "Talsperre Malter.geojson", but I included more example files of lakes in Saxony (Germany) in the `dams_single_geojsons` folder. Saxony completely and another water area only file is included inside `overall_geojsons`.
+To run this project start `MultiRobotPathPlanner.py` inside the new environment. Most important triggers and parameters are situated in the `__main__`. The example lake geojson-file above shows "Talsperre Malter.geojson", but I included more example files of lakes in Saxony (Germany) in the `dams_single_geojsons` folder. Saxony completely and another water area only file is included inside `overall_geojsons`.
 If you want to play around with your own files I included some code to filter geojson-files with geopandas in the `extract.py` file.
 
 I'll add more code to download and use online geo spacial resources soon. Then it will be possible to choose which lake/area to download from a list or whatever. Still in progress...
 At the moment it is only possible to analyze offline geojson-files. Inside the grid generation the geojson-file gets filtered for the biggest area to analyze, but at creation time of the DARP instance it checks for sanity and continuity anyway.   
 
-Set up the impact of the video export inside the DARP to your likings. The video export decreases iteration speed drastically at the moment. So I create and write a video frame every 5th iteration. Increase or decrease this "framerate" inside `video_export_add_frame`. If the assignment steps are not necessary you can turn the video export off in the `__main__` of `multiRobotPathPlanner.py`.
+Set up the impact of the video export inside the DARP to your likings. The video export decreases iteration speed drastically at the moment. So I create and write a video frame every 5th iteration. Increase or decrease this "framerate" inside `video_export_add_frame`. If the assignment steps are not necessary you can turn the video export off in the `__main__` of `MultiRobotPathPlanner.py`.
 
 If you don't want to define your initial start points all the time I created `get_random_start_points_list` helper function to find a defined amount of tiles at the banks of the left side. Always match the number and size of the portions in `__main__` to them.
 

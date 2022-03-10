@@ -14,14 +14,14 @@ import imageio
 from tqdm.auto import tqdm
 
 
-class multiRobotPathPlanner(DARP):
-    def __init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, importance,
+class MultiRobotPathPlanner(DARP):
+    def __init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
                  start_positions, visualization, image_export, import_file_name, video_export):
 
-        export_file_name = self.generate_file_name(import_file_name, start_positions, max_tiles_pr, random_level,
+        export_file_name = self.generate_file_name(import_file_name, start_positions, max_tiles_pr, seed, random_level,
                                                    cc_variation, importance)
 
-        DARP.__init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, importance,
+        DARP.__init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
                       start_positions, visualization, video_export, export_file_name)
 
         if not self.success:
@@ -129,10 +129,10 @@ class multiRobotPathPlanner(DARP):
             MSTs.append(k.mst)
         return MSTs
 
-    def generate_file_name(self, filename: str, initial_positions, max_tiles, random, cc_var, importance):
+    def generate_file_name(self, filename: str, initial_positions, max_tiles, seed, random, cc_var, importance):
         timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
         export_file_name = timestamp + "_" + str(filename) + "_start" + str(initial_positions) \
-                           + "_maxtiles" + str(max_tiles) + "_rand" + str(random) \
+                           + "_maxtiles" + str(max_tiles) + "_seed" + str(seed) + "_rand" + str(random) \
                            + "_ccvar" + str(cc_var) \
                            + "_imp" + str(importance)
         # Replace all characters in dict
@@ -166,7 +166,8 @@ if __name__ == '__main__':
 
     grid_bool = get_grid_array(dam_file_name, grid_sides_in_meter, multiprocessing=True)
 
-    start_points = get_random_start_points_list(6, grid_bool)
+    start_points = [(63, 217), (113, 195), (722, 326)]  # hard ones at random 0.0001
+    # get_random_start_points_list(3, grid_bool)
     # [(359, 114), (416, 37), (216, 178)] and [0.4, 0.3, 0.3] -> overflow maxiter
     # [(269, 158), (529, 281), (564, 304)] and portions [0.4, 0.3, 0.3] --> good ones
     # [(230, 180), (243, 178), (212, 176)] damned start points, portions [0.3, 0.2, 0.5]
@@ -174,17 +175,19 @@ if __name__ == '__main__':
     # [(60, 244), (237, 185), (651, 464), (678, 378), (667, 412)]
     # [(166, 212), (334, 157), (587, 337), (251, 301), (550, 327), (247, 258)]
     # [(600, 338), (547, 298), (527, 370), (446, 324), (323, 244), (643, 410)]
+    # [(727, 533), (587, 391), (206, 176)] at 20000 tiles take a long time
 
-    MaxIter = 100000
+    max_iter = 100000
     CCvariation = 0.01
-    randomLevel = 0.0005
+    randomLevel = 0.00005
     dcells = 500
-    max_tiles_per_robot = 10000
+    max_tiles_per_robot = 20000
+    seed_value = 321
     importance = False
     visualize = False
     image_export_final_assignment_matrix = True
     video_export_assignment_matrix_changes = True
 
-    multiRobotPathPlanner(grid_bool, np.uintc(MaxIter), CCvariation, randomLevel, np.uintc(dcells),
-                          max_tiles_per_robot, importance, start_points, visualize,
+    MultiRobotPathPlanner(grid_bool, np.uintc(max_iter), CCvariation, randomLevel, np.uintc(dcells),
+                          max_tiles_per_robot, seed_value, importance, start_points, visualize,
                           image_export_final_assignment_matrix, dam_file_name, video_export_assignment_matrix_changes)
