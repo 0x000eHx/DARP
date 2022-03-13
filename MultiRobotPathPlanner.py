@@ -166,12 +166,12 @@ if __name__ == '__main__':
 
     grid_bool = get_grid_array(dam_file_name, grid_sides_in_meter, multiprocessing=True)
 
-    start_points = [(63, 217), (113, 195), (722, 326)]  # hard ones at random 0.0001
+    start_points = [(600, 338), (547, 298), (527, 370), (446, 324), (323, 244), (643, 410)]
     # get_random_start_points_list(3, grid_bool)
     # [(359, 114), (416, 37), (216, 178)] and [0.4, 0.3, 0.3] -> overflow maxiter
     # [(269, 158), (529, 281), (564, 304)] and portions [0.4, 0.3, 0.3] --> good ones
     # [(230, 180), (243, 178), (212, 176)] damned start points, portions [0.3, 0.2, 0.5]
-    # [(63, 217), (113, 195), (722, 326)] better [0.4, 0.3, 0.3] or [0.3, 0.2, 0.5]
+    # [(63, 217), (113, 195), (722, 326)] good ones with 20k tiles
     # [(60, 244), (237, 185), (651, 464), (678, 378), (667, 412)]
     # [(166, 212), (334, 157), (587, 337), (251, 301), (550, 327), (247, 258)]
     # [(600, 338), (547, 298), (527, 370), (446, 324), (323, 244), (643, 410)]
@@ -181,7 +181,7 @@ if __name__ == '__main__':
     CCvariation = 0.01
     randomLevel = 0.00005
     dcells = 500
-    max_tiles_per_robot = 20000
+    max_tiles_per_robot = 10000
     seed_value = 321
     importance = False
     visualize = False

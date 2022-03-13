@@ -584,7 +584,7 @@ class DARP:
 
                 if check_for_near_float64_overflow(self.MetricMatrix):
                     self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.MetricMatrix)
-                    print("\nMetricMatrix normalized\n")
+                    print("\nMetricMatrix normalized")
 
                 if check_assignment_state(self.termThr, self.ConnectedRobotRegions,
                                           self.DesirableAssign, self.ArrayOfElements):
@@ -610,7 +610,7 @@ class DARP:
                 if self.MaxIter > 10000:
                     self.MaxIter = int(self.MaxIter / 2)
                 self.termThr += 10
-                print("Increasing termination threshold to", self.termThr)
+                print("\nIncreasing termination threshold to", self.termThr, "\n")
 
         getBinaryRobotRegions(self.BinaryRobotRegions, self.non_obstacle_positions, self.A)
         return success, absolut_iterations
