@@ -162,9 +162,9 @@ class MultiRobotPathPlanner(DARP):
 
 if __name__ == '__main__':
     dam_file_name = "Talsperre Malter.geojson"
-    grid_sides_in_meter = 3
+    grid_edge_length_meter = 3
 
-    grid_bool = get_grid_array(dam_file_name, grid_sides_in_meter, multiprocessing=True)
+    grid_bool = get_grid_array(dam_file_name, grid_edge_length_meter, multiprocessing=True)
 
     start_points = [(600, 338), (547, 298), (527, 370), (446, 324), (323, 244), (643, 410)]
     # get_random_start_points_list(3, grid_bool)
