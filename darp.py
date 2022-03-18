@@ -484,6 +484,18 @@ class DARP:
 
         assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
 
+        # to reduce overall tiles movement exchange values in self.DesirableAssign the way, that the lowest value of
+        # self.ArrayOfElements after first voronoi diagram area dividing is connected
+        # to the lowest entry in self.DesirableAssign
+        if self.DesirableAssign.max() > self.DesirableAssign.min():
+            arrayofelements_lowest_val_idx = self.ArrayOfElements.argmin()
+            desirableassign_lowest_val_idx = self.DesirableAssign.argmin()
+            print("Rearranging lowest value in DesirableAssign to match lowest value in ArrayOfElements!")
+            if arrayofelements_lowest_val_idx != desirableassign_lowest_val_idx:
+                temp = self.DesirableAssign[desirableassign_lowest_val_idx]
+                self.DesirableAssign[desirableassign_lowest_val_idx] = self.DesirableAssign[arrayofelements_lowest_val_idx]
+                self.DesirableAssign[arrayofelements_lowest_val_idx] = temp
+
         if self.video_export:
             self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
 
