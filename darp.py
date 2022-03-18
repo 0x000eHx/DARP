@@ -269,16 +269,20 @@ def euclidian_distance_points2d(array1: np.array, array2: np.array) -> np.float_
            ) ** 0.5  # faster function with faster sqrt
 
 
-@njit(fastmath=True)
-def normalize_metric_matrix(non_obs_pos: np.ndarray, metric_matrix: np.ndarray):
-    maxV = np.amax(metric_matrix)
-    minv = np.amin(metric_matrix)
+# TODO make numba compatible! outputs of inappropriate values?
+#  at some point ArrayOfElements has at least one entry -1 (from/in assign func)
+#  maybe doesn't work with numba? Don't know... implemented mask now to see if it solves this problem
+def normalize_metric_matrix(non_obs_pos: np.ndarray, area_bool: np.ndarray, metric_matrix: np.ndarray):
+    mask = np.where(area_bool)
+    metric_matrix_mask = metric_matrix[:, mask[0], mask[1]]
+    maxV = np.amax(metric_matrix_mask)
+    minV = np.amin(metric_matrix_mask)
+    new_metric_matrix = np.empty(metric_matrix.shape, dtype=np.float_)
 
     for cell in non_obs_pos:
-        metric_matrix[:, cell[0], cell[1]] -= minv
-        metric_matrix[:, cell[0], cell[1]] /= (maxV - minv)
-        metric_matrix[:, cell[0], cell[1]] *= 1000
-    return metric_matrix
+        new_metric_matrix[:, cell[0], cell[1]] = (metric_matrix[:, cell[0], cell[1]] - minV) * 10**6
+        new_metric_matrix[:, cell[0], cell[1]] /= (maxV - minV)
+    return new_metric_matrix
 
 
 @njit(fastmath=True)
@@ -289,7 +293,7 @@ def check_for_near_float64_overflow(metric_matrix: np.ndarray):
         return False
 
 
-@njit(fastmath=True)
+@njit(cache=True, fastmath=True)
 def construct_assignment_matrix(area_bool: np.ndarray, initial_positions: np.ndarray, max_tiles_per_robot: int):
     rows, cols = area_bool.shape
     Notiles = rows * cols
@@ -473,17 +477,6 @@ class DARP:
         measure_end = time.time()
         print("Elapsed time update(): ", (measure_end - measure_start), "sec")
 
-    def video_export_add_frame(self, iteration: int, connected_regions: np.ndarray):
-        framerate = 5
-
-        if (iteration % framerate) == 0 or iteration == 0:
-            uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))  # TODO interpolate or scale?
-            temp_img = Image.fromarray(uint8_array)  # mode="RGB"
-            font = ImageFont.truetype("arial.ttf", 9)
-            txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nSeed: {str(self.seed_value)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(self.ArrayOfElements)}\nTiles Connected:\n{str(connected_regions)}\nIteration: {iteration}'
-            ImageDraw.Draw(temp_img).multiline_text((3, 3), txt, spacing=2, font=font)
-            self.gif_writer.append_data(np.asarray(temp_img))
-
     def update(self):
         success = False
         criterionMatrix = np.zeros((self.rows, self.cols))
@@ -498,7 +491,7 @@ class DARP:
             self.assignment_matrix_visualization.placeCells()
 
         print("update() Start:\nDesirable Assignments:", self.DesirableAssign,
-              ", Tiles per Robot:", self.ArrayOfElements, "\nTermination threshold:", self.termThr)
+              ", Tiles per Robot:", self.ArrayOfElements, "\nTermination threshold: max", self.termThr, "tiles difference per robot to desirable value.")
 
         time_start = time.time()
         while self.termThr <= self.Dynamic_Cells and not success:
@@ -583,7 +576,7 @@ class DARP:
                     # time.sleep(0.1)
 
                 if check_for_near_float64_overflow(self.MetricMatrix):
-                    self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.MetricMatrix)
+                    self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.GridEnv_bool, self.MetricMatrix)
                     print("\nMetricMatrix normalized")
 
                 if check_assignment_state(self.termThr, self.ConnectedRobotRegions,
@@ -592,7 +585,7 @@ class DARP:
                     success = True
                     if self.video_export:
                         self.gif_writer.close()
-                    print("Finished Assignment Matrix Calculation:\n",
+                    print("Found Final Assignment Matrix:",
                           absolut_iterations, "Iterations in", (time_stop-time_start),
                           "sec;", absolut_iterations/(time_stop-time_start), "iter/sec",
                           "\nDesirable Assignments:", self.DesirableAssign, "\nTiles per Robot:", self.ArrayOfElements)
@@ -614,3 +607,14 @@ class DARP:
 
         getBinaryRobotRegions(self.BinaryRobotRegions, self.non_obstacle_positions, self.A)
         return success, absolut_iterations
+
+    def video_export_add_frame(self, iteration: int, connected_regions: np.ndarray):
+        framerate = 5
+
+        if (iteration % framerate) == 0 or iteration == 0:
+            uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))  # TODO interpolate or scale?
+            temp_img = Image.fromarray(uint8_array)  # mode="RGB"
+            font = ImageFont.truetype("arial.ttf", 9)
+            txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nSeed: {str(self.seed_value)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(self.ArrayOfElements)}\nTiles Connected:\n{str(connected_regions)}\nIteration: {iteration}'
+            ImageDraw.Draw(temp_img).multiline_text((3, 3), txt, spacing=2, font=font)
+            self.gif_writer.append_data(np.asarray(temp_img))
