@@ -1,5 +1,4 @@
 from pathlib import Path
-from gridding import get_grid_array, get_random_start_points_list
 from darp import DARP
 import numpy as np
 from kruskal import Kruskal
@@ -14,25 +13,38 @@ import imageio
 from tqdm.auto import tqdm
 
 
+def generate_file_name(filename: str, initial_positions, max_tiles, seed, random, cc_var, importance):
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    export_file_name = timestamp + "_" + str(filename) + "_start" + str(initial_positions) \
+                       + "_maxtiles" + str(max_tiles) + "_seed" + str(seed) + "_rand" + str(random) \
+                       + "_ccvar" + str(cc_var) \
+                       + "_imp" + str(importance)
+    # Replace all characters in dict
+    b = {' ': '', '.geojson': ''}
+    for x, y in b.items():
+        export_file_name = export_file_name.replace(x, y)
+    return export_file_name
+
+
 class MultiRobotPathPlanner(DARP):
     def __init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
                  start_positions, visualization, image_export, import_file_name, video_export):
 
-        export_file_name = self.generate_file_name(import_file_name, start_positions, max_tiles_pr, seed, random_level,
+        self.export_file_name = generate_file_name(import_file_name, start_positions, max_tiles_pr, seed, random_level,
                                                    cc_variation, importance)
 
         DARP.__init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
-                      start_positions, visualization, video_export, export_file_name)
+                      start_positions, visualization, video_export, self.export_file_name)
 
         if not self.success:
             print("DARP did not manage to find a solution for the given configuration!")
             sys.exit(3)
 
         if image_export:
-            self.to_image(export_file_name, self.A)
+            self.to_image()
 
         if video_export:
-            self.to_video(export_file_name)
+            self.to_video()
 
         mode_to_drone_turns = dict()
 
@@ -129,65 +141,20 @@ class MultiRobotPathPlanner(DARP):
             MSTs.append(k.mst)
         return MSTs
 
-    def generate_file_name(self, filename: str, initial_positions, max_tiles, seed, random, cc_var, importance):
-        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        export_file_name = timestamp + "_" + str(filename) + "_start" + str(initial_positions) \
-                           + "_maxtiles" + str(max_tiles) + "_seed" + str(seed) + "_rand" + str(random) \
-                           + "_ccvar" + str(cc_var) \
-                           + "_imp" + str(importance)
-        # Replace all characters in dict
-        b = {' ': '', '.geojson': ''}
-        for x, y in b.items():
-            export_file_name = export_file_name.replace(x, y)
-        return export_file_name
-
-    def to_image(self, file_name, optimal_assignment_array):
-        file_path = Path('result_export', file_name + ".jpg")
+    def to_image(self):
+        file_path = Path('result_export', self.export_file_name + ".jpg")
         if not file_path.parent.exists():
             os.makedirs(file_path.parent)
-        plt.imsave(file_path, optimal_assignment_array, dpi=100)
-        print("Exported image of final assignment matrix!")
+        plt.imsave(file_path, self.A, dpi=100)
+        print("Exported image of final assignment matrix")
 
-    def to_video(self, file_name):
+    def to_video(self):
         # existing gif in results_export folder?
-        input_path = Path("result_export", file_name + ".gif")
+        input_path = Path("result_export", self.export_file_name + ".gif")
         reader = imageio.get_reader(input_path)
-        output_path = Path("result_export", file_name + ".mp4")
+        output_path = Path("result_export", self.export_file_name + ".mp4")
         writer = imageio.get_writer(output_path)
         for i, im in tqdm(enumerate(reader)):
             writer.append_data(im)
         writer.close()
-        print("Created video from assignment matrix generation.gif file!")
-
-
-if __name__ == '__main__':
-    dam_file_name = "Talsperre Malter.geojson"
-    grid_edge_length_meter = 3
-
-    grid_bool = get_grid_array(dam_file_name, grid_edge_length_meter, multiprocessing=True)
-
-    start_points = [(600, 338), (547, 298), (527, 370), (446, 324), (323, 244), (643, 410)]
-    # get_random_start_points_list(3, grid_bool)
-    # [(359, 114), (416, 37), (216, 178)] and [0.4, 0.3, 0.3] -> overflow maxiter
-    # [(269, 158), (529, 281), (564, 304)] and portions [0.4, 0.3, 0.3] --> good ones
-    # [(230, 180), (243, 178), (212, 176)] damned start points, portions [0.3, 0.2, 0.5]
-    # [(63, 217), (113, 195), (722, 326)] good ones with 20k tiles
-    # [(60, 244), (237, 185), (651, 464), (678, 378), (667, 412)]
-    # [(166, 212), (334, 157), (587, 337), (251, 301), (550, 327), (247, 258)]
-    # [(600, 338), (547, 298), (527, 370), (446, 324), (323, 244), (643, 410)]
-    # [(727, 533), (587, 391), (206, 176)] at 20000 tiles take a long time
-
-    max_iter = 100000
-    CCvariation = 0.01
-    randomLevel = 0.00005
-    dcells = 500
-    max_tiles_per_robot = 10000
-    seed_value = 321
-    importance = False
-    visualize = False
-    image_export_final_assignment_matrix = True
-    video_export_assignment_matrix_changes = True
-
-    MultiRobotPathPlanner(grid_bool, np.uintc(max_iter), CCvariation, randomLevel, np.uintc(dcells),
-                          max_tiles_per_robot, seed_value, importance, start_points, visualize,
-                          image_export_final_assignment_matrix, dam_file_name, video_export_assignment_matrix_changes)
+        print("Created .mp4 video from assignment matrix animation .gif file")

@@ -280,8 +280,9 @@ def normalize_metric_matrix(non_obs_pos: np.ndarray, area_bool: np.ndarray, metr
     new_metric_matrix = np.empty(metric_matrix.shape, dtype=np.float_)
 
     for cell in non_obs_pos:
-        new_metric_matrix[:, cell[0], cell[1]] = (metric_matrix[:, cell[0], cell[1]] - minV) * 10**6
+        new_metric_matrix[:, cell[0], cell[1]] = metric_matrix[:, cell[0], cell[1]] - minV
         new_metric_matrix[:, cell[0], cell[1]] /= (maxV - minV)
+        new_metric_matrix[:, cell[0], cell[1]] *= 10 ** 6
     return new_metric_matrix
 
 
@@ -464,7 +465,7 @@ class DARP:
             movie_file_path = Path("result_export", self.import_file_name + ".gif")
             if not movie_file_path.parent.exists():
                 os.makedirs(movie_file_path.parent)
-            self.gif_writer = imageio.get_writer(movie_file_path, mode='i', duration=0.15)
+            self.gif_writer = imageio.get_writer(movie_file_path, mode='I', duration=0.15)
 
         if seed_value > 0:
             self.seed_value = seed_value
