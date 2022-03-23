@@ -1,14 +1,17 @@
 import sys
 from pathlib import Path
+import pandas
 from tqdm.auto import tqdm
 import geopandas as gpd
+import pandas as pd
 import numpy as np
 import math
 from multiprocessing import Process, Queue, cpu_count
 import queue
-from shapely.geometry import Point, box, MultiPolygon, Polygon
+from shapely.geometry import Point, box, MultiPolygon, Polygon, GeometryCollection
 from shapely.ops import unary_union
 from shapely.validation import make_valid
+import webbrowser
 import matplotlib.pyplot as plt
 
 
@@ -29,24 +32,24 @@ def get_random_start_points_list(number_of_start_points: int, area_bool: np.ndar
     return list(start_coordinates)  # back to list, cause we need a index later
 
 
-def get_long_lat_diff(grid_size_meter: float, startpoint_latitude: float):
+def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: float):
     """
 
-    :param grid_size_meter:
+    :param square_edge_length_meter:
     :param startpoint_latitude:
     :return: width, height difference in longitude, latitude
     """
     earth_radius = 6378137  # earth radius, sphere
 
     # Coordinate offsets in radians
-    new_lat_radians = grid_size_meter / earth_radius
-    new_long_radians = grid_size_meter / (earth_radius * math.cos(math.pi * startpoint_latitude / 180))
+    new_lat_radians = square_edge_length_meter / earth_radius
+    new_long_radians = square_edge_length_meter / (earth_radius * math.cos(math.pi * startpoint_latitude / 180))
 
     # OffsetPosition, decimal degrees
     # new_lat_decimal = startpoint_latitude + new_lat_radians * 180 / math.pi
     # new_long_decimal = startpoint_long + new_long_radians * 180 / math.pi
 
-    # difference only, equals grid_size_meter in lat/long
+    # difference only, equals square_edge_length_meter in lat/long
     lat_difference = new_lat_radians * 180 / math.pi
     long_difference = new_long_radians * 180 / math.pi
 
@@ -54,7 +57,6 @@ def get_long_lat_diff(grid_size_meter: float, startpoint_latitude: float):
 
 
 def which_row_cells_within_area_boundaries(area, r, tile_height, c, tile_width) -> list[Polygon]:
-
     row_list_of_Polygons = []
     for idx, x0 in enumerate(c):
         x1 = x0 + tile_width
@@ -75,13 +77,13 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
                                        grid_edge_length_meter: float,
                                        selected_area,
                                        multiprocessing=True):
-
     # latitude (x diff), longitude (y diff)
     tile_width, tile_height = get_long_lat_diff(grid_edge_length_meter, selected_area.centroid.y)
     xmin, ymin, xmax, ymax = selected_area.bounds
 
     # offset tuple (long, lat)
-    rows = sorted(np.arange(ymin + offset[1], ymax + offset[1] + tile_height, tile_height), reverse=True)  # scan from top to bottom
+    rows = sorted(np.arange(ymin + offset[1], ymax + offset[1] + tile_height, tile_height),
+                  reverse=True)  # scan from top to bottom
     columns = np.arange(xmin + offset[0], xmax + offset[0] + tile_width, tile_width)  # scan from left to right
 
     multipolygon_from_list_Polygons_selected_area = None
@@ -96,7 +98,8 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
 
         # create tasks and push them into queue
         for idx, row in enumerate(rows):
-            one_task = [idx, which_row_cells_within_area_boundaries, (selected_area, row, tile_height, columns, tile_width)]
+            one_task = [idx, which_row_cells_within_area_boundaries,
+                        (selected_area, row, tile_height, columns, tile_width)]
             task_queue.put(one_task)
 
         # Start worker processes
@@ -117,9 +120,9 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
         for i in range(num_of_processes):
             task_queue.put('STOP')
 
-        multipolygon_from_list_Polygons_selected_area = MultiPolygon(list_Polygons_selected_area)
+        multipolygon_from_list_Polygons_selected_area = GeometryCollection(list_Polygons_selected_area)
 
-    #else:
+    # else:
     #    # serial processing, cause time doesn't matter
     #    grid = np.full((len(rows), len(columns)), False)
     #    for xidx, x0 in enumerate(tqdm(columns)):
@@ -135,7 +138,7 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
 
 
 def check_real_start_points(geopandas_area_file, start_points):
-    biggest_area = get_biggest_area_in_geojson(str(geopandas_area_file))
+    biggest_area = get_biggest_area_polygon(str(geopandas_area_file))
 
     start_points_list = []
     for p in start_points:
@@ -168,11 +171,11 @@ def check_edge_length(grid_edge_length):
     return True
 
 
-def get_biggest_area_in_geojson(dam_file_name):
+def get_biggest_area_polygon(dam_file_name):
     dam_geojson_filepath = Path("dams_single_geojsons", dam_file_name)
     gdf_dam = gpd.read_file(dam_geojson_filepath)
 
-    gdf_dam_exploded = gdf_dam.geometry.explode().tolist()
+    gdf_dam_exploded = gdf_dam.geometry.explode(index_parts=True)  # no index_parts / .tolist()
     biggest_area = max(gdf_dam_exploded, key=lambda a: a.area)
 
     return biggest_area
@@ -188,7 +191,7 @@ def generate_offset_list(num_offsets: int, area_polygon, grid_edge_length: float
     """
     cell_width, cell_height = get_long_lat_diff(grid_edge_length, area_polygon.centroid.y)
     offset = []
-    rng = np.random.default_rng(seed=42)
+    rng = np.random.default_rng()
 
     # how many offsets except none
     if num_offsets <= 0:
@@ -209,58 +212,71 @@ def generate_offset_list(num_offsets: int, area_polygon, grid_edge_length: float
     return offset
 
 
-def find_biggest_grid(selected_area_filename, grid_edge_lengths):
-
-    area_polygon = get_biggest_area_in_geojson(selected_area_filename)
-
-    # search for biggest tiles first
+def find_biggest_tiles(area_polygon, grid_edge_lengths, polygon_threshold):
     # find offset for biggest tile size in grid_edge_lengths (should always be its last entry grid_edge_lengths[-1])
     offsets = generate_offset_list(4, area_polygon, grid_edge_lengths[-1])
 
-    list_of_grids = []
+    list_biggest_grids = []
     # offset is always in (long, lat)
     for off in offsets:
-        grid_multipolygon = processing_geometry_boundary_check(off, grid_edge_lengths[-1], area_polygon)
-        if grid_multipolygon is None:
-            print("No grid could be found for biggest edge length", grid_edge_lengths[-1], " meter and", str(off), "offset")
+        grid_geo_coll = processing_geometry_boundary_check(off, grid_edge_lengths[-1], area_polygon)
+        if grid_geo_coll is None:
+            print("No grid could be found for biggest square edge length", grid_edge_lengths[-1], "meter and", str(off),
+                  "offset")
         else:
-            list_of_grids.append((off, grid_multipolygon))
+            list_biggest_grids.append((off, grid_geo_coll))
 
-    # search through list_of_grids for biggest covered area
-    biggest_area_multipolygon_idx = 0
-    if len(list_of_grids) > 0:
-        for idx, (o, multipoly) in enumerate(list_of_grids):
-            if unary_union(multipoly).area > unary_union(list_of_grids[biggest_area_multipolygon_idx][1]).area:
-                biggest_area_multipolygon_idx = idx
-        biggest_area_multipolygon = (list_of_grids[biggest_area_multipolygon_idx][0], make_valid(unary_union(list_of_grids[biggest_area_multipolygon_idx][1])))
+    # search through list_biggest_grids for biggest covered area
+    if len(list_biggest_grids) > 0:
+        # make unary_union of all determined Polygon and compare the areas, the biggest area wins
+        best_offset, biggest_grid = max(list_biggest_grids, key=lambda a: unary_union(a[1]).area)
+        if len(biggest_grid.geoms) > 1:
+            print(len(biggest_grid.geoms), "Polygons found in given area!")
 
-        if len(biggest_area_multipolygon[1].geoms) > 1:
-            print(len(biggest_area_multipolygon[1].geoms), "members inside biggest_area_multipolygon.multipolygon.geoms")
+        # remove multipolygon regions inside multipolygon_square_grid
+        # which are considered too small by polygon_threshold
+        # need to unify at intersecting edges and divide polygons with make_valid(unary_union()) -> see shapely doc
+        geo_coll_unions = make_valid(unary_union(biggest_grid))
+        area_one_polygon = biggest_grid.geoms[0].area
+        only_relevant_multipolygons = []
+        for poly in geo_coll_unions.geoms:
+            if poly.area >= (area_one_polygon * polygon_threshold):
+                only_relevant_multipolygons.append(poly)
 
-        # gs = gpd.GeoSeries(, crs="EPSG:4326")
-        temp = {'grid_edge_length': [grid_edge_lengths[-1]] * len(biggest_area_multipolygon[1].geoms),
-                'offset_longitude': [biggest_area_multipolygon[0][0]] * len(biggest_area_multipolygon[1].geoms),
-                'offset_latitude': [biggest_area_multipolygon[0][1]] * len(biggest_area_multipolygon[1].geoms),
-                'geometry': biggest_area_multipolygon[1]}
-        gdf = gpd.GeoDataFrame(temp, crs="EPSG:4326")
-
-        # just for demo
-        fig, ax = plt.subplots(figsize=(20, 20))
-        talsperre_geojsonfile = Path("dams_single_geojsons", "Talsperre Malter.geojson")
-        gdf_talsperre = gpd.read_file(talsperre_geojsonfile)
-        gdf_talsperre.plot(ax=ax, markersize=.05, figsize=(20, 20), color='blue', edgecolor='black')  # cmap='jet'
-        gdf.plot(ax=ax, cmap='PuBu', scheme='quantiles')  # edgecolor='white',
-        # gdf.explore("geometry", legend=False)
-        plt.show()
+        final_list_single_polys = []
+        for multipoly in only_relevant_multipolygons:
+            polygon_list = []
+            for poly in biggest_grid.geoms:
+                if multipoly.contains(poly):
+                    polygon_list.append(poly)
+            if len(polygon_list) > 0:
+                final_list_single_polys.append(GeometryCollection(polygon_list))
+        gdf_dict = {'offset': [best_offset] * len(final_list_single_polys),
+                    'covered_area': [unary_union(x).area for x in final_list_single_polys],
+                    'geometry': final_list_single_polys}
+        gdf_biggest = gpd.GeoDataFrame(gdf_dict, crs="EPSG:4326").set_geometry('geometry')
+        return gdf_biggest, best_offset
 
     else:
-        print("Didn't find a grid! No Multipolygon available")
+        return None
 
-    # transfer to geopandas dataframe
 
-    # search for smaller edge length tiles around the area we just concluded to cover the biggest area
+def find_grid(selected_area_filename, grid_edge_lengths, polygon_threshold: int):
+    area_polygon = get_biggest_area_polygon(selected_area_filename)
 
-    # save candidate for best result
-    # gpd.GeoDataFrame.to_file("my_file.geojson", driver="GeoJSON")
+    if polygon_threshold <= 0:
+        polygon_threshold = 5
+        print("polygon_threshold <= 0: invalid entry...\nAt least", polygon_threshold,
+              "polygons in a group will get marked relevant!")
+
+    # search for biggest tiles first
+    # chosen offset is the additional offset from the area_polygon.centroid which got used to find gdf_biggest_tiles
+    # saved inside
+    gdf_biggest_tiles, chosen_offset = find_biggest_tiles(area_polygon, grid_edge_lengths, polygon_threshold)
+    if gdf_biggest_tiles is None:
+        print("Didn't find a grid with", grid_edge_lengths[-1], "square edge length!\nContinuing with smaller one...")
+    else:
+        gdf_biggest_tiles.to_file(filename=f'{str(chosen_offset)}_temp.geojson', driver="GeoJSON")
+
 
     pass

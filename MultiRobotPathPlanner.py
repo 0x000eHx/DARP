@@ -13,19 +13,6 @@ import imageio
 from tqdm.auto import tqdm
 
 
-def generate_file_name(filename: str, initial_positions, max_tiles, seed, random, cc_var, importance):
-    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-    export_file_name = timestamp + "_" + str(filename) + "_start" + str(initial_positions) \
-                       + "_maxtiles" + str(max_tiles) + "_seed" + str(seed) + "_rand" + str(random) \
-                       + "_ccvar" + str(cc_var) \
-                       + "_imp" + str(importance)
-    # Replace all characters in dict
-    b = {' ': '', '.geojson': ''}
-    for x, y in b.items():
-        export_file_name = export_file_name.replace(x, y)
-    return export_file_name
-
-
 class MultiRobotPathPlanner(DARP):
     def __init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
                  start_positions, visualization, image_export, import_file_name, video_export):
