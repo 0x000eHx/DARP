@@ -66,9 +66,9 @@ def which_row_cells_within_area_boundaries(area, r, tile_height, c, tile_width, 
                 if not new_Polygon.within(area):
                     am_i_a_good_polygon = False
                     break
-                if new_Polygon.within(union_geo_coll):
+                if union_geo_coll.covers(new_Polygon) and not new_Polygon.touches(union_geo_coll):
                     am_i_a_good_polygon = False
-                    # if new_Polygon.crosses(union_geo_coll) or new_Polygon.touches(union_geo_coll):
+                    # if new_Polygon.overlaps(union_geo_coll):
                     #     am_i_a_good_polygon = True
             if am_i_a_good_polygon:
                 row_list_of_Polygons.append(new_Polygon)
@@ -79,24 +79,28 @@ def which_row_cells_within_area_boundaries(area, r, tile_height, c, tile_width, 
 
 
 def worker(input_queue, output_queue):
+    """
+    Necessary worker for python multiprocessing
+    Has an Index, if needed...
+    """
     for idx, func, args in iter(input_queue.get, 'STOP'):
         result = func(*args)
         output_queue.put([idx, result])
 
 
 def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, latitude_offset)
-                                       grid_edge_length_meter: float,
+                                       square_size_long_lat: dict,
                                        selected_area,
-                                       list_known_geo_coll_of_single_polys=None):
-    # latitude (x diff), longitude (y diff)
-    tile_width, tile_height = get_long_lat_diff(grid_edge_length_meter, selected_area.centroid.y)
+                                       list_known_geo_coll_of_single_polys: list):
+
     xmin, ymin, xmax, ymax = selected_area.bounds
 
     # offset tuple (long, lat)
-    # scan from top to bottom
-    rows = np.arange(ymin + offset[1], ymax + offset[1] + tile_height, tile_height)
+    rows = np.arange(ymin + offset[1], ymax + offset[1] + square_size_long_lat['tile_height'],
+                     square_size_long_lat['tile_height'])  # scan from top to bottom
     rows = np.flip(rows)
-    columns = np.arange(xmin + offset[0], xmax + offset[0] + tile_width, tile_width)  # scan from left to right
+    columns = np.arange(xmin + offset[0], xmax + offset[0] + square_size_long_lat['tile_width'],
+                        square_size_long_lat['tile_width'])  # scan from left to right
 
     # Create queues for task input and result output
     task_queue = Queue()
@@ -106,19 +110,21 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
     list_Polygons_selected_area = []
 
     # create tasks and push them into queue
-    if list_known_geo_coll_of_single_polys is not None:
+    if len(list_known_geo_coll_of_single_polys) > 0:
         list_valid_union_geo_colls = []
         for geo_coll in list_known_geo_coll_of_single_polys:
             list_valid_union_geo_colls.append(make_valid(unary_union(geo_coll)))
 
         for idx, row in enumerate(rows):
             one_task = [idx, which_row_cells_within_area_boundaries,
-                        (selected_area, row, tile_height, columns, tile_width, list_valid_union_geo_colls)]
+                        (selected_area, row, square_size_long_lat['tile_height'], columns,
+                         square_size_long_lat['tile_width'], list_valid_union_geo_colls)]
             task_queue.put(one_task)
     else:
         for idx, row in enumerate(rows):
             one_task = [idx, which_row_cells_within_area_boundaries,
-                        (selected_area, row, tile_height, columns, tile_width)]
+                        (selected_area, row, square_size_long_lat['tile_height'], columns,
+                         square_size_long_lat['tile_width'])]
             task_queue.put(one_task)
 
     # Start worker processes
@@ -212,15 +218,32 @@ def get_biggest_area_polygon(dam_file_name):
     return biggest_area
 
 
-def generate_offset_list(num_offsets: int, area_polygon, grid_edge_length: float):
+def generate_square_edges_long_lat(grid_edge_lengths, selected_area) -> dict:
+    list_long_lat_tuples = {}
+    edge_length_max = max(grid_edge_lengths)
+
+    # latitude == width (y diff), longitude == height (x diff)
+    tile_width_max, tile_height_max = get_long_lat_diff(edge_length_max, selected_area.centroid.y)
+
+    for edge_length_meter in grid_edge_lengths:
+        if edge_length_max % edge_length_meter == 0:
+            divider = int(edge_length_max / edge_length_meter)
+            tile_width = tile_width_max / divider
+            tile_height = tile_height_max / divider
+            list_long_lat_tuples[f'{edge_length_meter}'] = {"tile_width": tile_width,
+                                                            "tile_height": tile_height}
+    return list_long_lat_tuples
+
+
+def generate_offset_list(num_offsets: int, grid_edge_length: dict):
     """
     Create a list of offsets within the boundaries of chosen grid edge length.
     :param num_offsets: number of offsets to calculate extra to origin
-    :param area_polygon: geopandas area polygon
     :param grid_edge_length: edge length of the square to search for offset within
     :return: list of tuples (longitude, latitude) which first entry no offset, rest num_offsets * offset
     """
-    cell_width, cell_height = get_long_lat_diff(grid_edge_length, area_polygon.centroid.y)
+
+    cell_width, cell_height = grid_edge_length["tile_width"], grid_edge_length["tile_height"]
     offset = []
     rng = np.random.default_rng()
 
@@ -280,22 +303,36 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
     return list_known_geo_coll_of_single_polys
 
 
+def create_geodataframe_dict(best_offset, dict_square_edge_length_long_lat, list_known_geo_coll_of_single_polys):
+    gdf_dict = {'offset_longitude': best_offset[0] * len(list_known_geo_coll_of_single_polys),
+                'offset_latitude': best_offset[1] * len(list_known_geo_coll_of_single_polys),
+                'tile_width': [dict_square_edge_length_long_lat['tile_width']] * len(
+                    list_known_geo_coll_of_single_polys),
+                'tile_height': [dict_square_edge_length_long_lat['tile_height']] * len(
+                    list_known_geo_coll_of_single_polys),
+                'covered_area': [unary_union(x).area for x in list_known_geo_coll_of_single_polys],
+                'geometry': list_known_geo_coll_of_single_polys}
+    return gdf_dict
+
+
 def find_tile_groups_of_given_edge_length(area_polygon,
-                                          given_grid_edge_length: float,
+                                          dict_square_edge_length_long_lat: dict,
                                           polygon_threshold,
                                           known_tiles_gdf: gpd.GeoDataFrame):
+
+
     # there is no know geometry data available
     if known_tiles_gdf.empty:
         # find offset for biggest tile size first
-        offsets = generate_offset_list(5, area_polygon, given_grid_edge_length)
+        offsets = generate_offset_list(5, dict_square_edge_length_long_lat)
 
         list_biggest_grids = []
         # offset is always in (long, lat)
         for off in offsets:
-            grid_geo_coll = processing_geometry_boundary_check(off, given_grid_edge_length, area_polygon)
+            grid_geo_coll = processing_geometry_boundary_check(off, dict_square_edge_length_long_lat, area_polygon, [])
             if grid_geo_coll is None:
-                print("No grid could be found for biggest square edge length", given_grid_edge_length, "meter and",
-                      str(off), "offset")
+                print("No grid could be found for biggest square edge length", str(dict_square_edge_length_long_lat),
+                      "meter and", str(off), "offset")
             else:
                 list_biggest_grids.append((off, grid_geo_coll))
 
@@ -308,16 +345,15 @@ def find_tile_groups_of_given_edge_length(area_polygon,
                 print(len(geo_coll_single_polyons.geoms), "Polygons found in given area!")
 
             # relevancy check of joined polygons group
-            list_known_geo_coll_of_single_polys = keep_only_relevant_geo_coll_of_single_polygon_geo_coll(
+            list_relevant_geo_colls = keep_only_relevant_geo_coll_of_single_polygon_geo_coll(
                 geo_coll_single_polyons, polygon_threshold)
 
-            gdf_dict = {'offset_longitude': best_offset[0] * len(list_known_geo_coll_of_single_polys),
-                        'offset_latitude': best_offset[1] * len(list_known_geo_coll_of_single_polys),
-                        'grid_edge_length': [given_grid_edge_length] * len(list_known_geo_coll_of_single_polys),
-                        'covered_area': [unary_union(x).area for x in list_known_geo_coll_of_single_polys],
-                        'geometry': list_known_geo_coll_of_single_polys}
-            gdf_biggest = gpd.GeoDataFrame(gdf_dict, crs=4326).set_geometry('geometry')
-            return gdf_biggest
+            gdf_dict = create_geodataframe_dict(best_offset,
+                                                dict_square_edge_length_long_lat,
+                                                list_relevant_geo_colls)
+
+            gdf_biggest_tile_size = gpd.GeoDataFrame(gdf_dict, crs=4326).set_geometry('geometry')
+            return gdf_biggest_tile_size
         else:
             return gpd.GeoDataFrame()
 
@@ -330,27 +366,24 @@ def find_tile_groups_of_given_edge_length(area_polygon,
         for row in known_tiles_gdf.itertuples(index=False):
             list_known_geo_coll_of_single_polys.append(row.geometry)  # geometry is a (hashable) column in row
 
-        # get all Polygon of given_grid_edge_length inside area_polygon
+        # get all Polygon of dict_square_edge_length_long_lat inside area_polygon
         grid_geo_coll = processing_geometry_boundary_check(best_offset,
-                                                           given_grid_edge_length,
+                                                           dict_square_edge_length_long_lat,
                                                            area_polygon,
                                                            list_known_geo_coll_of_single_polys)
 
         if grid_geo_coll.is_empty:
-            print("No grid could be found for biggest square edge length", given_grid_edge_length, "meter and",
+            print("No grid could be found for biggest square edge length", dict_square_edge_length_long_lat, "meter and",
                   str(best_offset), "offset")
             return gpd.GeoDataFrame()
         else:
             # group the polygons and reject groups of polygons (by area) which are too small
             list_relevant_geo_colls = keep_only_relevant_geo_coll_of_single_polygon_geo_coll(grid_geo_coll,
                                                                                              polygon_threshold)
-
             # generate GeoDataframe
-            gdf_dict = {'offset_longitude': best_offset[0] * len(list_relevant_geo_colls),
-                        'offset_latitude': best_offset[1] * len(list_relevant_geo_colls),
-                        'grid_edge_length': [given_grid_edge_length] * len(list_relevant_geo_colls),
-                        'covered_area': [unary_union(x).area for x in list_relevant_geo_colls],
-                        'geometry': list_relevant_geo_colls}
+            gdf_dict = create_geodataframe_dict(best_offset,
+                                                dict_square_edge_length_long_lat,
+                                                list_relevant_geo_colls)
             gdf = gpd.GeoDataFrame(gdf_dict, crs=4326).set_geometry('geometry')  # , crs=4326
             return gdf
 
@@ -358,14 +391,18 @@ def find_tile_groups_of_given_edge_length(area_polygon,
 def find_grid(selected_area_filename, grid_edge_lengths: list, polygon_threshold: list):
     area_polygon = get_biggest_area_polygon(selected_area_filename)
 
+    # generate tile width and height by calculating the biggest tile size to go for and divide it into the other tile sizes
+    # hopefully clears out a mismatch in long/lat max and min values of biggest tile size to
+    square_edges_long_lat = generate_square_edges_long_lat(grid_edge_lengths, area_polygon)
+
     # search for biggest tiles first
     gdf_collection = gpd.GeoDataFrame()
     grid_edge_lengths = sorted(grid_edge_lengths, reverse=True)  # from greatest to smallest value
     polygon_threshold = sorted(polygon_threshold, reverse=True)  # from greatest to smallest value
 
-    for idx, grid_length in enumerate(grid_edge_lengths):
+    for idx, edge_length in enumerate(grid_edge_lengths):
         gdf_one_tile_size = find_tile_groups_of_given_edge_length(area_polygon,
-                                                                  grid_length,
+                                                                  square_edges_long_lat[f'{edge_length}'],
                                                                   polygon_threshold[idx],
                                                                   gdf_collection)
         if gdf_one_tile_size.empty:
