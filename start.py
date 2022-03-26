@@ -1,22 +1,23 @@
 import sys
 from MultiRobotPathPlanner import MultiRobotPathPlanner
-from gridding import check_edge_length, check_real_start_points, find_grid
+from gridding import check_edge_length_polygon_threshold, check_real_start_points, find_grid
 import geopandas as gpd
 import numpy as np
 import yaml
 import time
+import webbrowser
 
 
 def write_yaml_config_file(str_filepath):
     start_settings = {'geojson_file_name': 'Talsperre Malter.geojson',
-                      'grid_edge_length_meter': [3, 6, 12],  # edge lengths in meter (can contain one or more values)
+                      'grid_edge_length_meter': [4, 8, 16],  # edge lengths in meter (can contain one or more values)
                       'real_start_points': [
                           [13.653522254079629, 50.92603465830493],  # long, lat values; shapely x, y values
                           [13.6500293945372, 50.91945111878728],
                           [13.654725066304804, 50.921186253206045],
                           [13.664545589728833, 50.907868824583616]
                       ],
-                      'polygon_threshold': 15,  # group of polygons with number below this value will be consider irrelevant
+                      'polygon_threshold': [5, 10, 30],  # group of polygons with number below this value will be consider irrelevant
                       'max_distance_per_robot': 10000,  # in meter
                       'trigger_image_export_final_assignment_matrix': True,
                       'trigger_video_export_assignment_matrix_changes': True,
@@ -53,23 +54,27 @@ if __name__ == '__main__':
     write_yaml_config_file(settings_yaml_filepath)
     settings = load_yaml_config_file(settings_yaml_filepath)
 
-    if check_edge_length(settings['grid_edge_length_meter']) and check_real_start_points(settings['geojson_file_name'],
-                                                                                         settings['real_start_points']):
+    if check_edge_length_polygon_threshold(settings['grid_edge_length_meter'],
+                                           settings['polygon_threshold'])\
+            and check_real_start_points(settings['geojson_file_name'], settings['real_start_points']):
+
         # find biggest grid of highest value in grid_edge_length_meter
-        grid_gdf = find_grid(str(settings['geojson_file_name']), settings['grid_edge_length_meter'], settings['polygon_threshold'])
+        grid_gdf = find_grid(str(settings['geojson_file_name']),
+                             settings['grid_edge_length_meter'],
+                             settings['polygon_threshold'])
 
-        # save candidate for best result
-        if grid_gdf is not None:
-            file_name = generate_file_name(settings['geojson_file_name'])
+        # save best results
+        file_name = generate_file_name(settings['geojson_file_name'])
+        grid_gdf.to_file(filename=f'./geodataframes/{file_name}.geojson', driver="GeoJSON")
 
-            grid_gdf.to_file(filename=file_name + ".geojson", driver="GeoJSON")
+        fol_map = grid_gdf.explore('covered_area', cmap='jet', scheme='quantiles', legend=True)  # legend=True
+        fol_map.save("talsperre.html")
+        webbrowser.open("talsperre.html")
 
     else:
-        print("check_edge_length() or check_real_start_points() failed!")
+        print("check_edge_length_polygon_threshold() or check_real_start_points() failed!")
         sys.exit(13)
 
     # search for smaller edge length tiles around the area we just concluded to cover the biggest area
-
-
 
     sys.exit(0)

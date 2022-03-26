@@ -1,8 +1,8 @@
 geojson_file_name: Talsperre Malter.geojson
 grid_edge_length_meter:
-- 3
-- 6
-- 12
+- 4
+- 8
+- 16
 real_start_points:
 - - 13.653522254079629
   - 50.92603465830493
@@ -12,7 +12,10 @@ real_start_points:
   - 50.921186253206045
 - - 13.664545589728833
   - 50.907868824583616
-polygon_threshold: 15
+polygon_threshold:
+- 5
+- 10
+- 30
 max_distance_per_robot: 10000
 trigger_image_export_final_assignment_matrix: true
 trigger_video_export_assignment_matrix_changes: true

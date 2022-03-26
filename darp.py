@@ -384,7 +384,7 @@ def check_assignment_state(thresh: int,
 
 class DARP:
     def __init__(self, area_bool: np.ndarray, max_iter: np.uint32, cc_variation: float, random_level: float,
-                 dynamic_cells: np.uint32, max_tiles_per_robot: int, seed_value: int, importance: bool, start_positions: list[tuple],
+                 dynamic_cells: np.uint32, max_tiles_per_robot: int, seed_value, importance: bool, start_positions: list[tuple],
                  visualization: bool, video_export: bool, import_file_name: str):
 
         print("Following dam file will be processed: " + import_file_name)
@@ -467,11 +467,12 @@ class DARP:
                 os.makedirs(movie_file_path.parent)
             self.gif_writer = imageio.get_writer(movie_file_path, mode='I', duration=0.15)
 
-        if seed_value > 0:
-            self.seed_value = seed_value
+        if None:
+            self.seed_value = None
         else:
-            self.seed_value = 1
-        seed(self.seed_value)  # correct numba seeding
+            if seed_value > 0:
+                self.seed_value = seed_value
+                seed(self.seed_value)  # correct numba seeding
 
         measure_start = time.time()
         self.success, self.absolute_iterations = self.update()
