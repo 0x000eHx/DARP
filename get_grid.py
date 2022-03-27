@@ -1,7 +1,6 @@
 import sys
 from gridding_helpers import check_edge_length_polygon_threshold, check_real_start_points, find_grid, get_biggest_area_polygon
 import time
-import webbrowser
 from setting_helpers import load_yaml_config_file, write_yaml_config_file
 
 
@@ -15,13 +14,11 @@ def generate_file_name(filename: str):
 
 
 if __name__ == '__main__':
-    settings_yaml_filepath = './settings/settings_talsperre_bautzen.yaml'
-    # write_yaml_config_file(settings_yaml_filepath)
+    settings_yaml_filepath = './settings/settings_talsperre_malter.yaml'
+    write_yaml_config_file(settings_yaml_filepath)
     settings = load_yaml_config_file(settings_yaml_filepath)
 
-    if check_edge_length_polygon_threshold(settings['grid_edge_length_meter'],
-                                           settings['polygon_threshold']) \
-            and check_real_start_points(settings['geojson_file_name'], settings['real_start_points']):
+    if check_edge_length_polygon_threshold(settings['grid_edge_length_meter'], settings['polygon_threshold']):
 
         area_polygon = get_biggest_area_polygon(settings['geojson_file_name'])
 
@@ -34,12 +31,9 @@ if __name__ == '__main__':
         file_name = generate_file_name(settings['geojson_file_name'])
         grid_gdf.to_file(filename=f'./geodataframes/{file_name}.geojson', driver="GeoJSON")
 
-        fol_map = grid_gdf.explore('covered_area', cmap='PuBu', scheme='quantiles')  # jet, legend=True
-        fol_map.save(f'./htmls/{file_name}.html')
-        webbrowser.open(f'./htmls/{file_name}.html')
-
     else:
         print("check_edge_length_polygon_threshold() or check_real_start_points() failed!")
         sys.exit(13)
 
+    print("Successfully finished grid generation and saved geometry to file!\n", f'./geodataframes/{file_name}.geojson')
     sys.exit(0)

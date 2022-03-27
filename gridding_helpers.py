@@ -12,6 +12,10 @@ from shapely.ops import unary_union
 from shapely.validation import make_valid
 
 
+def get_start_points_from_coords(list_start_point_coords: list, numpy_bool_array: np.ndarray):
+    list_start_points = []
+
+
 def generate_numpy_contour_array(list_multipolys: list, dict_tile_width_height):
     list_np_bool_grids = []
 

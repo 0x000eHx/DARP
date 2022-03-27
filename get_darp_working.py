@@ -4,9 +4,12 @@ from pathlib import Path
 import webbrowser
 import os
 import time
-from gridding_helpers import generate_numpy_contour_array, get_biggest_area_polygon, get_random_start_points_list
+from gridding_helpers import generate_numpy_contour_array, get_biggest_area_polygon, get_random_start_points_list, \
+    check_real_start_points, get_long_lat_diff
 from setting_helpers import load_yaml_config_file
 from MultiRobotPathPlanner import MultiRobotPathPlanner
+import folium
+import numpy as np
 
 
 def generate_file_name(filename: str):
@@ -29,45 +32,55 @@ def newest_file_in_folder(path_to_folder):
 
 if __name__ == '__main__':
 
-    settings = load_yaml_config_file('./settings/settings_talsperre_bautzen.yaml')
+    settings = load_yaml_config_file('./settings/settings_talsperre_malter.yaml')
 
     last_file_no_suffix = newest_file_in_folder(Path('geodataframes'))
     grid_gdf = gpd.read_file(filename=f'./geodataframes/{last_file_no_suffix}.geojson')
 
     # draw loaded map in browser and save
-    # fol_map = grid_gdf.explore('covered_area', cmap='PuBu', scheme='quantiles')  # jet, legend=True
-    # fol_map.save(f'htmls/{last_file_no_suffix}.html')
-    # path = 'file:///' + os.getcwd() + '/htmls/' + last_file_no_suffix + '.html'
-    # webbrowser.open(path)
+    fol_map = grid_gdf.explore('covered_area', cmap='jet', scheme='quantiles')  # PuBu, legend=True
 
-    # load series of multipolygons with specific tile size out of geodataframe
-    different_area_sizes = grid_gdf.covered_area.unique()
-    max_val = max(different_area_sizes)
+    for sp in settings['real_start_points']:
+        folium.Marker([sp[1], sp[0]], popup="<i>Startpoint</i>").add_to(fol_map)
+    fol_map.save(f'htmls/{last_file_no_suffix}.html')
+    path = 'file:///' + os.getcwd() + '/htmls/' + last_file_no_suffix + '.html'
+    webbrowser.open(path)
 
-    biggest_areas = grid_gdf.loc[grid_gdf['covered_area'] == max_val]
-    tile_width = biggest_areas.tile_width[0]
-    tile_height = biggest_areas.tile_height[0]
+    if check_real_start_points(settings['geojson_file_name'], settings['real_start_points']):
 
-    dict_something = {"tile_width": tile_width, "tile_height": tile_height}
+        # load series of multipolygons with specific tile size out of geodataframe
+        different_area_sizes = grid_gdf.covered_area.unique()
+        max_val = max(different_area_sizes)
+        biggest_areas = grid_gdf.loc[grid_gdf['covered_area'] == max_val]
+        dict_tile_data = {"tile_width": biggest_areas.tile_width[0], "tile_height": biggest_areas.tile_height[0]}
 
-    # post numpy contour bool array generation
-    list_np_bool_contours = generate_numpy_contour_array(biggest_areas.geometry.to_list(),
-                                                         dict_something)
+        # transform max_distance_per_robot into max_tiles_per_robot for DARP
+        list_start_point_coords = settings['real_start_points']
+        area_polygon = get_biggest_area_polygon(settings['geojson_file_name'])
 
-    # distance calculation here, depending on the tile size
+        w_diff, h_diff = get_long_lat_diff(settings['max_distance_per_robot'], area_polygon.centroid.y)
+        # w_diff / settings['max_distance_per_robot']
+        max_tiles_per_robot = settings['max_distance_per_robot']  # TODO
 
-    area_polygon = get_biggest_area_polygon(settings['geojson_file_name'])
-    bla = settings['real_start_points']
-    export_file_name = generate_file_name(settings['geojson_file_name'])
+        export_file_name = generate_file_name(settings['geojson_file_name'])
 
-    for np_bool_array in list_np_bool_contours:
-        start_points = get_random_start_points_list(5, np_bool_array)
-        handle = MultiRobotPathPlanner(np_bool_array, settings['darp_max_iter'], settings['darp_cc_variation'],
-                                       settings['darp_random_level'], settings['darp_dynamic_tiles_threshold'],
-                                       settings['max_distance_per_robot'], settings['darp_random_seed_value'],
-                                       settings['darp_trigger_importance'], start_points,
-                                       False, settings['trigger_image_export_final_assignment_matrix'],
-                                       settings['trigger_video_export_assignment_matrix_changes'],
-                                       export_file_name)  # TODO a real name for every grid of tile_size x
+        for multipoly in biggest_areas.geometry.to_list():
+
+            # post gridding numpy contour bool array generation
+            np_bool_array = generate_numpy_contour_array(multipoly, dict_tile_data)
+
+            relevant_tiles_count = np.count_nonzero(np_bool_array) - len(list_start_point_coords)
+
+            # check which tile in numpy bool array contains the start points
+
+            start_points = get_random_start_points_list(5, np_bool_array)
+
+            handle = MultiRobotPathPlanner(np_bool_array, settings['darp_max_iter'], settings['darp_cc_variation'],
+                                           settings['darp_random_level'], settings['darp_dynamic_tiles_threshold'],
+                                           max_tiles_per_robot, settings['darp_random_seed_value'],
+                                           settings['darp_trigger_importance'], start_points,
+                                           False, settings['trigger_image_export_final_assignment_matrix'],
+                                           settings['trigger_video_export_assignment_matrix_changes'],
+                                           export_file_name)  # TODO a real name for every grid of tile_size x
 
     sys.exit(0)
