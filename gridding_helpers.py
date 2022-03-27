@@ -1,6 +1,5 @@
-import webbrowser
 from pathlib import Path
-
+import uuid
 import pandas
 from tqdm.auto import tqdm
 import geopandas as gpd
@@ -11,6 +10,76 @@ import queue
 from shapely.geometry import Point, box, Polygon, MultiPolygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
+
+
+def generate_numpy_contour_array(list_multipolys: list, dict_tile_width_height):
+    list_np_bool_grids = []
+
+    for multipoly in list_multipolys:
+
+        union_area = make_valid(unary_union(multipoly))
+        minx, miny, maxx, maxy = union_area.bounds
+
+        tiles_longitude = round((maxx - minx) / dict_tile_width_height['tile_width'])  # colums
+        tiles_latitude = round((maxy - miny) / dict_tile_width_height['tile_height'])  # rows
+
+        np_bool_grid = np.full(shape=(int(tiles_latitude), int(tiles_longitude)), fill_value=False, dtype=bool)
+
+        columns_range = np.arange(minx, maxx + dict_tile_width_height['tile_width'],
+                                  dict_tile_width_height['tile_width'])  # scan from left to right
+        rows_range = np.arange(miny, maxy + dict_tile_width_height['tile_height'],
+                               dict_tile_width_height['tile_height'])
+        rows_range = np.flip(rows_range)  # scan from top to bottom
+
+        # Create queues
+        task_queue = Queue()
+        done_queue = Queue()
+
+        num_of_processes = cpu_count() - 1
+
+        # create tasks and push them into queue
+        for idx, poly in enumerate(multipoly.geoms):
+            one_task = [idx, check_poly_pos, (rows_range, columns_range, poly.centroid.y, poly.centroid.x,
+                                              dict_tile_width_height['tile_height'],
+                                              dict_tile_width_height['tile_width'])]
+            task_queue.put(one_task)
+
+        # Start worker processes
+        for i in range(num_of_processes):
+            Process(target=worker, args=(task_queue, done_queue)).start()
+
+        for _ in tqdm(multipoly.geoms):
+            try:
+                ix, (row_idx, col_idx) = done_queue.get()
+                np_bool_grid[row_idx, col_idx] = True
+            except queue.Empty as e:
+                print(e)
+            except queue.Full as e:
+                print(e)
+
+        # Tell child processes to stop
+        for i in range(num_of_processes):
+            task_queue.put('STOP')
+
+        list_np_bool_grids.append(np_bool_grid)
+
+    return list_np_bool_grids
+
+
+def check_poly_pos(rows_range, columns_range, y, x, tile_height, tile_width):
+    poly_i_r = 0
+    poly_i_c = 0
+
+    for i_r, row in enumerate(rows_range):
+        if row > y > row - tile_height:
+            poly_i_r = i_r
+            break
+    for i_c, column in enumerate(columns_range):
+        if column < x < column + tile_width:
+            poly_i_c = i_c
+            break
+
+    return poly_i_r, poly_i_c
 
 
 def get_random_start_points_list(number_of_start_points: int, area_bool: np.ndarray):
@@ -92,13 +161,12 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
                                        square_size_long_lat: dict,
                                        selected_area,
                                        list_known_geo_coll_of_single_polys: list):
-
     xmin, ymin, xmax, ymax = selected_area.bounds
 
     # offset tuple (long, lat)
     rows = np.arange(ymin + offset[1], ymax + offset[1] + square_size_long_lat['tile_height'],
-                     square_size_long_lat['tile_height'])  # scan from top to bottom
-    rows = np.flip(rows)
+                     square_size_long_lat['tile_height'])
+    rows = np.flip(rows)  # scan from top to bottom
     columns = np.arange(xmin + offset[0], xmax + offset[0] + square_size_long_lat['tile_width'],
                         square_size_long_lat['tile_width'])  # scan from left to right
 
@@ -304,7 +372,8 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
 
 
 def create_geodataframe_dict(best_offset, dict_square_edge_length_long_lat, list_known_geo_coll_of_single_polys):
-    gdf_dict = {'offset_longitude': best_offset[0] * len(list_known_geo_coll_of_single_polys),
+    gdf_dict = {'hash': [str(uuid.uuid4())] * len(list_known_geo_coll_of_single_polys),
+                'offset_longitude': best_offset[0] * len(list_known_geo_coll_of_single_polys),
                 'offset_latitude': best_offset[1] * len(list_known_geo_coll_of_single_polys),
                 'tile_width': [dict_square_edge_length_long_lat['tile_width']] * len(
                     list_known_geo_coll_of_single_polys),
@@ -319,8 +388,6 @@ def find_tile_groups_of_given_edge_length(area_polygon,
                                           dict_square_edge_length_long_lat: dict,
                                           polygon_threshold,
                                           known_tiles_gdf: gpd.GeoDataFrame):
-
-
     # there is no know geometry data available
     if known_tiles_gdf.empty:
         # find offset for biggest tile size first
@@ -373,13 +440,15 @@ def find_tile_groups_of_given_edge_length(area_polygon,
                                                            list_known_geo_coll_of_single_polys)
 
         if grid_geo_coll.is_empty:
-            print("No grid could be found for biggest square edge length", dict_square_edge_length_long_lat, "meter and",
+            print("No grid could be found for biggest square edge length", dict_square_edge_length_long_lat,
+                  "meter and",
                   str(best_offset), "offset")
             return gpd.GeoDataFrame()
         else:
             # group the polygons and reject groups of polygons (by area) which are too small
             list_relevant_geo_colls = keep_only_relevant_geo_coll_of_single_polygon_geo_coll(grid_geo_coll,
                                                                                              polygon_threshold)
+
             # generate GeoDataframe
             gdf_dict = create_geodataframe_dict(best_offset,
                                                 dict_square_edge_length_long_lat,
@@ -388,15 +457,15 @@ def find_tile_groups_of_given_edge_length(area_polygon,
             return gdf
 
 
-def find_grid(selected_area_filename, grid_edge_lengths: list, polygon_threshold: list):
-    area_polygon = get_biggest_area_polygon(selected_area_filename)
+def find_grid(area_polygon, grid_edge_lengths: list, polygon_threshold: list):
 
     # generate tile width and height by calculating the biggest tile size to go for and divide it into the other tile sizes
-    # hopefully clears out a mismatch in long/lat max and min values of biggest tile size to
+    # hopefully clears out a mismatch in long/lat max and min values between biggest tile size and smallest
     square_edges_long_lat = generate_square_edges_long_lat(grid_edge_lengths, area_polygon)
 
     # search for biggest tiles first
     gdf_collection = gpd.GeoDataFrame()
+
     grid_edge_lengths = sorted(grid_edge_lengths, reverse=True)  # from greatest to smallest value
     polygon_threshold = sorted(polygon_threshold, reverse=True)  # from greatest to smallest value
 
@@ -414,16 +483,5 @@ def find_grid(selected_area_filename, grid_edge_lengths: list, polygon_threshold
                                                             axis=0,
                                                             ignore_index=True),
                                               crs=gdf_one_tile_size.crs)  # , verify_integrity=True
-            gdf_collection.to_file('./geodataframes/tiles.geojson', driver='GeoJSON')
-
-        # print(gdf_biggest_tiles.geom_equals(biggest_gdf, align=True))  # seems fine
-
-    fol_map = gdf_collection.explore('covered_area', cmap='jet', scheme='quantiles', legend=True)  # PuBu
-    fol_map.save("talsperre_combined.html")
-    webbrowser.open("talsperre_combined.html")
-
-    # big_gdf = gpd.read_file('./geodataframes/tiles_new.geojson')
-    # big_gdf.set_geometry('geometry')
-    # fol_map = big_gdf.explore('covered_area', cmap='PuBu', scheme='quantiles', legend=True)
 
     return gdf_collection

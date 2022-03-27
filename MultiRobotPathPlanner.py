@@ -8,19 +8,19 @@ import sys
 from turns import turns
 import matplotlib.pyplot as plt
 import os
-import time
 import imageio
 from tqdm.auto import tqdm
+import moviepy.editor as mp
 
 
 class MultiRobotPathPlanner(DARP):
-    def __init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
-                 start_positions, visualization, image_export, import_file_name, video_export):
+    def __init__(self, np_bool_area: np.ndarray, max_iter: np.uint32, cc_variation: float, random_level: float,
+                 dynamic_cells: np.uint32, max_tiles_pr: int, seed, importance: bool,
+                 start_positions, visualization, image_export, video_export, export_file_name):
 
-        self.export_file_name = generate_file_name(import_file_name, start_positions, max_tiles_pr, seed, random_level,
-                                                   cc_variation, importance)
+        self.export_file_name = export_file_name
 
-        DARP.__init__(self, area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
+        DARP.__init__(self, np_bool_area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
                       start_positions, visualization, video_export, self.export_file_name)
 
         if not self.success:
@@ -137,11 +137,8 @@ class MultiRobotPathPlanner(DARP):
 
     def to_video(self):
         # existing gif in results_export folder?
-        input_path = Path("result_export", self.export_file_name + ".gif")
-        reader = imageio.get_reader(input_path)
-        output_path = Path("result_export", self.export_file_name + ".mp4")
-        writer = imageio.get_writer(output_path)
-        for i, im in tqdm(enumerate(reader)):
-            writer.append_data(im)
-        writer.close()
+        num_of_processes = os.cpu_count() - 1
+        clip = mp.VideoFileClip("./result_export/" + self.export_file_name + ".gif")
+        clip.write_videofile("./result_export/" + self.export_file_name + ".mp4", audio=False, threads=num_of_processes)
+        clip.close()
         print("Created .mp4 video from assignment matrix animation .gif file")
