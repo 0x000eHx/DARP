@@ -30,10 +30,11 @@ if __name__ == '__main__':
         # save best results
         file_name = generate_file_name(settings['geojson_file_name'])
         grid_gdf.to_file(filename=f'./geodataframes/{file_name}.geojson', driver="GeoJSON")
+        print("Successfully finished grid generation and saved geometry to file!\n",
+              f'./geodataframes/{file_name}.geojson')
 
     else:
         print("check_edge_length_polygon_threshold() or check_real_start_points() failed!")
         sys.exit(13)
 
-    print("Successfully finished grid generation and saved geometry to file!\n", f'./geodataframes/{file_name}.geojson')
     sys.exit(0)

@@ -16,58 +16,55 @@ def get_start_points_from_coords(list_start_point_coords: list, numpy_bool_array
     list_start_points = []
 
 
-def generate_numpy_contour_array(list_multipolys: list, dict_tile_width_height):
-    list_np_bool_grids = []
+def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height, dict_multipoly_offset):
 
-    for multipoly in list_multipolys:
+    union_area = make_valid(unary_union(multipoly))
+    minx, miny, maxx, maxy = union_area.bounds
 
-        union_area = make_valid(unary_union(multipoly))
-        minx, miny, maxx, maxy = union_area.bounds
+    tiles_longitude = round((maxx - minx) / dict_tile_width_height['tile_width'])  # colums
+    tiles_latitude = round((maxy - miny) / dict_tile_width_height['tile_height'])  # rows
 
-        tiles_longitude = round((maxx - minx) / dict_tile_width_height['tile_width'])  # colums
-        tiles_latitude = round((maxy - miny) / dict_tile_width_height['tile_height'])  # rows
+    np_bool_grid = np.full(shape=(int(tiles_latitude), int(tiles_longitude)), fill_value=False, dtype=bool)
 
-        np_bool_grid = np.full(shape=(int(tiles_latitude), int(tiles_longitude)), fill_value=False, dtype=bool)
+    columns_range = np.arange(minx + dict_multipoly_offset['offset_latitude'],
+                              maxx + dict_multipoly_offset['offset_latitude'] + dict_tile_width_height['tile_width'],
+                              dict_tile_width_height['tile_width'])  # scan from left to right
+    rows_range = np.arange(miny + dict_multipoly_offset['offset_longitude'],
+                           maxy + dict_multipoly_offset['offset_longitude'] + dict_tile_width_height['tile_height'],
+                           dict_tile_width_height['tile_height'])
+    rows_range = np.flip(rows_range)  # scan from top to bottom
 
-        columns_range = np.arange(minx, maxx + dict_tile_width_height['tile_width'],
-                                  dict_tile_width_height['tile_width'])  # scan from left to right
-        rows_range = np.arange(miny, maxy + dict_tile_width_height['tile_height'],
-                               dict_tile_width_height['tile_height'])
-        rows_range = np.flip(rows_range)  # scan from top to bottom
+    # Create queues
+    task_queue = Queue()
+    done_queue = Queue()
 
-        # Create queues
-        task_queue = Queue()
-        done_queue = Queue()
+    num_of_processes = cpu_count() - 1
 
-        num_of_processes = cpu_count() - 1
+    # create tasks and push them into queue
+    for idx, poly in enumerate(multipoly.geoms):
+        one_task = [idx, check_poly_pos, (rows_range, columns_range, poly.centroid.y, poly.centroid.x,
+                                          dict_tile_width_height['tile_height'],
+                                          dict_tile_width_height['tile_width'])]
+        task_queue.put(one_task)
 
-        # create tasks and push them into queue
-        for idx, poly in enumerate(multipoly.geoms):
-            one_task = [idx, check_poly_pos, (rows_range, columns_range, poly.centroid.y, poly.centroid.x,
-                                              dict_tile_width_height['tile_height'],
-                                              dict_tile_width_height['tile_width'])]
-            task_queue.put(one_task)
+    # Start worker processes
+    for i in range(num_of_processes):
+        Process(target=worker, args=(task_queue, done_queue)).start()
 
-        # Start worker processes
-        for i in range(num_of_processes):
-            Process(target=worker, args=(task_queue, done_queue)).start()
+    for _ in tqdm(multipoly.geoms):
+        try:
+            ix, (row_idx, col_idx) = done_queue.get()
+            np_bool_grid[row_idx, col_idx] = True
+        except queue.Empty as e:
+            print(e)
+        except queue.Full as e:
+            print(e)
 
-        for _ in tqdm(multipoly.geoms):
-            try:
-                ix, (row_idx, col_idx) = done_queue.get()
-                np_bool_grid[row_idx, col_idx] = True
-            except queue.Empty as e:
-                print(e)
-            except queue.Full as e:
-                print(e)
+    # Tell child processes to stop
+    for i in range(num_of_processes):
+        task_queue.put('STOP')
 
-        # Tell child processes to stop
-        for i in range(num_of_processes):
-            task_queue.put('STOP')
-
-        list_np_bool_grids.append(np_bool_grid)
-
-    return list_np_bool_grids
+    return np_bool_grid
 
 
 def check_poly_pos(rows_range, columns_range, y, x, tile_height, tile_width):
@@ -357,28 +354,57 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
         if coll_valid_unions.area >= (area_one_polygon * polygon_threshold):
             relevant_union_coll.append(coll_valid_unions)
     else:
-        for one_single_poly in coll_valid_unions.geoms:
+        for one_single_poly in tqdm(coll_valid_unions.geoms):
             if one_single_poly.area >= (area_one_polygon * polygon_threshold):
                 relevant_union_coll.append(one_single_poly)
 
+    # Create queues for task input and result output
+    task_queue = Queue()
+    done_queue = Queue()
+    num_of_processes = cpu_count() - 1
+
     # after relevancy check for grouped polygons go for single polygons inside Group of Polys
     list_known_geo_coll_of_single_polys = []
-    for one_relevant_coll in relevant_union_coll:
-        # check the grouped polygons after size check for  their single Polygons and group them by
-        polygon_list = []
-        for one_single_poly in tqdm(coll_single_polyons.geoms):
-            # which single Polygon is actually inside a relevant Multipolygon
-            if one_relevant_coll.covers(one_single_poly):
-                polygon_list.append(one_single_poly)
-        if len(polygon_list) > 0:
-            list_known_geo_coll_of_single_polys.append(MultiPolygon(polygon_list))
+
+    for idx, one_relevant_coll in enumerate(relevant_union_coll):
+        one_task = [idx, keep_relevent_coll_helper, (coll_single_polyons, one_relevant_coll)]
+        task_queue.put(one_task)
+
+    # Start worker processes
+    for _ in range(num_of_processes):
+        Process(target=worker, args=(task_queue, done_queue)).start()
+
+    for _ in tqdm(relevant_union_coll):
+        try:
+            idx, list_polys = done_queue.get()
+            if len(list_polys) > 0:
+                list_known_geo_coll_of_single_polys.append(MultiPolygon(list_polys))
+
+        except queue.Empty as e:
+            print(e)
+        except queue.Full as e:
+            print(e)
+
+    # Tell child processes to stop
+    for _ in range(num_of_processes):
+        task_queue.put('STOP')
+
     return list_known_geo_coll_of_single_polys
 
 
+def keep_relevent_coll_helper(coll_single_polyons, one_relevant_coll):
+    polygon_list = []
+    for one_single_poly in coll_single_polyons.geoms:
+        # which single Polygon is actually inside a relevant Multipolygon
+        if one_relevant_coll.covers(one_single_poly):
+            polygon_list.append(one_single_poly)
+    return polygon_list
+
+
 def create_geodataframe_dict(best_offset, dict_square_edge_length_long_lat, list_known_geo_coll_of_single_polys):
-    gdf_dict = {'hash': [str(uuid.uuid4())] * len(list_known_geo_coll_of_single_polys),
-                'offset_longitude': best_offset[0] * len(list_known_geo_coll_of_single_polys),
-                'offset_latitude': best_offset[1] * len(list_known_geo_coll_of_single_polys),
+    gdf_dict = {'hash': [str(uuid.uuid4()) for _ in list_known_geo_coll_of_single_polys],
+                'offset_longitude': [best_offset[0]] * len(list_known_geo_coll_of_single_polys),
+                'offset_latitude': [best_offset[1]] * len(list_known_geo_coll_of_single_polys),
                 'tile_width': [dict_square_edge_length_long_lat['tile_width']] * len(
                     list_known_geo_coll_of_single_polys),
                 'tile_height': [dict_square_edge_length_long_lat['tile_height']] * len(
@@ -432,6 +458,8 @@ def find_tile_groups_of_given_edge_length(area_polygon,
     if not known_tiles_gdf.empty:
         # determine best_offset for aligned tiles, is one hashable column inside known_tiles_gdf
         best_offset = (known_tiles_gdf.head(1).offset_longitude[0], known_tiles_gdf.head(1).offset_latitude[0])
+        # TODO offset of smallest tiles doesn't match biggest tiles in final geodataframe, I smell a bug somewhere
+
         list_known_geo_coll_of_single_polys = []  # will be list of series (of Polygons)
         # extract all GeoSeries from known_tiles_gdf
         for row in known_tiles_gdf.itertuples(index=False):
@@ -445,8 +473,7 @@ def find_tile_groups_of_given_edge_length(area_polygon,
 
         if grid_geo_coll.is_empty:
             print("No grid could be found for biggest square edge length", dict_square_edge_length_long_lat,
-                  "meter and",
-                  str(best_offset), "offset")
+                  "meter and", str(best_offset), "offset")
             return gpd.GeoDataFrame()
         else:
             # group the polygons and reject groups of polygons (by area) which are too small

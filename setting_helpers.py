@@ -11,7 +11,8 @@ def write_yaml_config_file(str_filepath):
                           [13.664545589728833, 50.907868824583616]
                       ],
                       'polygon_threshold': [5, 15],
-                      # group of polygons with number below this value will be considered irrelevant
+                      # polygon groups with given number below this value will be considered irrelevant
+                      # index is equivalent to index of edge length
                       'max_distance_per_robot': 10000,  # in meter
                       'trigger_image_export_final_assignment_matrix': True,
                       'trigger_video_export_assignment_matrix_changes': True,

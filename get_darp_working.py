@@ -38,7 +38,7 @@ if __name__ == '__main__':
     grid_gdf = gpd.read_file(filename=f'./geodataframes/{last_file_no_suffix}.geojson')
 
     # draw loaded map in browser and save
-    fol_map = grid_gdf.explore('covered_area', cmap='jet', scheme='quantiles')  # PuBu, legend=True
+    fol_map = grid_gdf.explore('covered_area', cmap='Spectral')  # YlGn,jet, PuBu, legend=True, scheme='quantiles'
 
     for sp in settings['real_start_points']:
         folium.Marker([sp[1], sp[0]], popup="<i>Startpoint</i>").add_to(fol_map)
@@ -52,7 +52,10 @@ if __name__ == '__main__':
         different_area_sizes = grid_gdf.covered_area.unique()
         max_val = max(different_area_sizes)
         biggest_areas = grid_gdf.loc[grid_gdf['covered_area'] == max_val]
-        dict_tile_data = {"tile_width": biggest_areas.tile_width[0], "tile_height": biggest_areas.tile_height[0]}
+        dict_tile_data = {"tile_width": biggest_areas.tile_width[0],
+                          "tile_height": biggest_areas.tile_height[0]}
+        dict_offset = {'offset_longitude': biggest_areas.offset_longitude[0],
+                       'offset_latitude': biggest_areas.offset_latitude[0]}
 
         # transform max_distance_per_robot into max_tiles_per_robot for DARP
         list_start_point_coords = settings['real_start_points']
@@ -67,7 +70,7 @@ if __name__ == '__main__':
         for multipoly in biggest_areas.geometry.to_list():
 
             # post gridding numpy contour bool array generation
-            np_bool_array = generate_numpy_contour_array(multipoly, dict_tile_data)
+            np_bool_array = generate_numpy_contour_array(multipoly, dict_tile_data, dict_offset)
 
             relevant_tiles_count = np.count_nonzero(np_bool_array) - len(list_start_point_coords)
 
