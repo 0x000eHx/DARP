@@ -126,25 +126,22 @@ def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: floa
 
 def which_row_cells_within_area_boundaries(area, r, tile_height, c, tile_width, list_union_geo_coll=None) -> list:
     row_list_of_Polygons = []
+
     for idx, x0 in enumerate(c):
         x1 = x0 + tile_width
         y1 = r + tile_height
-        new_Polygon = box(x0, r, x1, y1)
-        if list_union_geo_coll is not None:
+        Box_Polygon = box(x0, r, x1, y1)
+        if Box_Polygon.within(area):
             am_i_a_good_polygon = True
-            for union_geo_coll in list_union_geo_coll:
-                if not new_Polygon.within(area):
-                    am_i_a_good_polygon = False
-                    break
-                if union_geo_coll.covers(new_Polygon) and not new_Polygon.touches(union_geo_coll):
-                    am_i_a_good_polygon = False
-                    # if new_Polygon.overlaps(union_geo_coll):
-                    #     am_i_a_good_polygon = True
+            if list_union_geo_coll is not None:
+                for union_geo_coll in list_union_geo_coll:
+                    if Box_Polygon.within(union_geo_coll):
+                        am_i_a_good_polygon = False
+                        # if new_Polygon.overlaps(union_geo_coll):
+                        #     am_i_a_good_polygon = True
             if am_i_a_good_polygon:
-                row_list_of_Polygons.append(new_Polygon)
-        else:
-            if new_Polygon.within(area):
-                row_list_of_Polygons.append(new_Polygon)
+                row_list_of_Polygons.append(Box_Polygon)
+
     return row_list_of_Polygons
 
 
@@ -162,6 +159,7 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
                                        square_size_long_lat: dict,
                                        selected_area,
                                        list_known_geo_coll_of_single_polys: list):
+    print("Searching for a grid!")
     xmin, ymin, xmax, ymax = selected_area.bounds
 
     # offset tuple (long, lat)
@@ -345,6 +343,7 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
 
     :return: List of geometry collection polygon groups which don't align and were considered relevant
     """
+    print("Searching for irrelevant polygons now!")
     # remove Collection regions which are considered too small by polygon_threshold
     # need to unify at intersecting/touching edges and divide polygons with make_valid(unary_union()) -> see shapely doc
     coll_valid_unions = make_valid(unary_union(coll_single_polyons))
@@ -354,9 +353,12 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
         if coll_valid_unions.area >= (area_one_polygon * polygon_threshold):
             relevant_union_coll.append(coll_valid_unions)
     else:
-        for one_single_poly in tqdm(coll_valid_unions.geoms):
-            if one_single_poly.area >= (area_one_polygon * polygon_threshold):
-                relevant_union_coll.append(one_single_poly)
+        print("Found", len(coll_valid_unions.geoms), "valid unified Polygons")
+        num_valid_un_poly = len(coll_valid_unions.geoms)
+        for one_valid_union in tqdm(coll_valid_unions.geoms):
+            if one_valid_union.area >= (area_one_polygon * polygon_threshold):
+                relevant_union_coll.append(one_valid_union)
+        print("Only", len(relevant_union_coll), "of them are considered relevant.")
 
     # Create queues for task input and result output
     task_queue = Queue()
@@ -367,7 +369,7 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
     list_known_geo_coll_of_single_polys = []
 
     for idx, one_relevant_coll in enumerate(relevant_union_coll):
-        one_task = [idx, keep_relevent_coll_helper, (coll_single_polyons, one_relevant_coll)]
+        one_task = [idx, keep_relevent_poly_helper, (coll_single_polyons, one_relevant_coll)]
         task_queue.put(one_task)
 
     # Start worker processes
@@ -376,23 +378,26 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
 
     for _ in tqdm(relevant_union_coll):
         try:
-            idx, list_polys = done_queue.get()
-            if len(list_polys) > 0:
-                list_known_geo_coll_of_single_polys.append(MultiPolygon(list_polys))
+            idx, poly_list = done_queue.get()
+            if len(poly_list) > 0:
+                list_known_geo_coll_of_single_polys.append(MultiPolygon(poly_list))
 
         except queue.Empty as e:
             print(e)
         except queue.Full as e:
             print(e)
 
-    # Tell child processes to stop
+    # Tell workers to stop, work done
     for _ in range(num_of_processes):
         task_queue.put('STOP')
+
+    task_queue.close()
+    done_queue.close()
 
     return list_known_geo_coll_of_single_polys
 
 
-def keep_relevent_coll_helper(coll_single_polyons, one_relevant_coll):
+def keep_relevent_poly_helper(coll_single_polyons, one_relevant_coll):
     polygon_list = []
     for one_single_poly in coll_single_polyons.geoms:
         # which single Polygon is actually inside a relevant Multipolygon
@@ -422,7 +427,7 @@ def find_tile_groups_of_given_edge_length(area_polygon,
     if known_tiles_gdf.empty:
         # find offset for biggest tile size first
         offsets = generate_offset_list(5, dict_square_edge_length_long_lat)
-
+        print("First: Find biggest possible grid with a list of random offset!")
         list_biggest_grids = []
         # offset is always in (long, lat)
         for off in offsets:
@@ -460,10 +465,10 @@ def find_tile_groups_of_given_edge_length(area_polygon,
         best_offset = (known_tiles_gdf.head(1).offset_longitude[0], known_tiles_gdf.head(1).offset_latitude[0])
         # TODO offset of smallest tiles doesn't match biggest tiles in final geodataframe, I smell a bug somewhere
 
-        list_known_geo_coll_of_single_polys = []  # will be list of series (of Polygons)
-        # extract all GeoSeries from known_tiles_gdf
-        for row in known_tiles_gdf.itertuples(index=False):
-            list_known_geo_coll_of_single_polys.append(row.geometry)  # geometry is a (hashable) column in row
+        list_known_geo_coll_of_single_polys = []  # will be list of all known Multipolygons
+        for single_geom in known_tiles_gdf.geometry:
+            # extract Multipolygon from each GeoSeries in known_tiles_gdf
+            list_known_geo_coll_of_single_polys.append(single_geom)
 
         # get all Polygon of dict_square_edge_length_long_lat inside area_polygon
         grid_geo_coll = processing_geometry_boundary_check(best_offset,
@@ -476,6 +481,8 @@ def find_tile_groups_of_given_edge_length(area_polygon,
                   "meter and", str(best_offset), "offset")
             return gpd.GeoDataFrame()
         else:
+            if len(grid_geo_coll.geoms) > 1:
+                print(len(grid_geo_coll.geoms), "Polygons found in given area!")
             # group the polygons and reject groups of polygons (by area) which are too small
             list_relevant_geo_colls = keep_only_relevant_geo_coll_of_single_polygon_geo_coll(grid_geo_coll,
                                                                                              polygon_threshold)
@@ -509,6 +516,7 @@ def find_grid(area_polygon, grid_edge_lengths: list, polygon_threshold: list):
             print("Didn't find a grid with", grid_edge_lengths[idx],
                   "square edge length!\nContinuing with smaller one...")
         else:
+            print(f'Found grid with tile edge length of {edge_length}m')
             gdf_collection = gpd.GeoDataFrame(pandas.concat([gdf_collection,
                                                              gdf_one_tile_size],
                                                             axis=0,
