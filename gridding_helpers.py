@@ -354,7 +354,7 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
             relevant_union_coll.append(coll_valid_unions)
     else:
         print("Found", len(coll_valid_unions.geoms), "valid unified Polygons")
-        num_valid_un_poly = len(coll_valid_unions.geoms)
+        # num_valid_un_poly = len(coll_valid_unions.geoms)
         for one_valid_union in tqdm(coll_valid_unions.geoms):
             if one_valid_union.area >= (area_one_polygon * polygon_threshold):
                 relevant_union_coll.append(one_valid_union)
@@ -408,12 +408,10 @@ def keep_relevent_poly_helper(coll_single_polyons, one_relevant_coll):
 
 def create_geodataframe_dict(best_offset, dict_square_edge_length_long_lat, list_known_geo_coll_of_single_polys):
     gdf_dict = {'hash': [str(uuid.uuid4()) for _ in list_known_geo_coll_of_single_polys],
-                'offset_longitude': [best_offset[0]] * len(list_known_geo_coll_of_single_polys),
-                'offset_latitude': [best_offset[1]] * len(list_known_geo_coll_of_single_polys),
-                'tile_width': [dict_square_edge_length_long_lat['tile_width']] * len(
-                    list_known_geo_coll_of_single_polys),
-                'tile_height': [dict_square_edge_length_long_lat['tile_height']] * len(
-                    list_known_geo_coll_of_single_polys),
+                'offset_longitude': best_offset[0],
+                'offset_latitude': best_offset[1],
+                'tile_width': dict_square_edge_length_long_lat['tile_width'],
+                'tile_height': dict_square_edge_length_long_lat['tile_height'],
                 'covered_area': [unary_union(x).area for x in list_known_geo_coll_of_single_polys],
                 'geometry': list_known_geo_coll_of_single_polys}
     return gdf_dict
