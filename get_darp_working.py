@@ -85,5 +85,7 @@ if __name__ == '__main__':
                                            False, settings['trigger_image_export_final_assignment_matrix'],
                                            settings['trigger_video_export_assignment_matrix_changes'],
                                            export_file_name)  # TODO a real name for every grid of tile_size x
+    else:
+        print("start points don't match the given lake area")
 
     sys.exit(0)
