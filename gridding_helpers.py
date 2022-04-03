@@ -238,10 +238,17 @@ def check_edge_length_polygon_threshold(grid_edge_lengths, polys_threshold):
     :param polys_threshold:
     :return:
     """
-    if isinstance(grid_edge_lengths, list):
-        grid_edge_lengths = sorted(grid_edge_lengths, reverse=True)  # from greatest to smallest value
-    if isinstance(polys_threshold, list):
-        polys_threshold = sorted(polys_threshold, reverse=True)  # from greatest to smallest value
+    if not isinstance(grid_edge_lengths, list):
+        # keep orientation intact
+        # grid_edge_lengths = sorted(grid_edge_lengths, reverse=True)  # from greatest to smallest value
+        print("Something went wrong with the grid_edge_lengths import. Expected list.")
+        return False
+
+    if not isinstance(polys_threshold, list):
+        # keep orientation intact
+        # polys_threshold = sorted(polys_threshold, reverse=True)  # from greatest to smallest value
+        print("Something went wrong with the polys_threshold import. Expected list.")
+        return False
 
     edge_length_array = np.array(grid_edge_lengths)
     poly_threshold_array = np.array(polys_threshold)
@@ -257,7 +264,7 @@ def check_edge_length_polygon_threshold(grid_edge_lengths, polys_threshold):
             return False
 
         elif i > 50:
-            print("Grid edge length value bigger than 50m. Depending on the area size you might not get results.")
+            print("Warning: Grid edge length value greater 50m.\nDepending on the area size you might not get results.")
 
         # are the edge lengths divider from another?
         if i > np.amin(edge_length_array) and not i % np.amin(edge_length_array) == 0:
@@ -268,8 +275,8 @@ def check_edge_length_polygon_threshold(grid_edge_lengths, polys_threshold):
 
     # check if polygon_threshold list contains a negative value and replace it with a reasonable entry
     for poly_thresh in poly_threshold_array:
-        if poly_thresh <= 0:
-            print("polygon_threshold", poly_thresh, "<= 0: invalid entry! Abort!")
+        if poly_thresh < 0:
+            print("The polygon_threshold entry", poly_thresh, "< 0 is invalid. Only positiv values. Abort!")
             return False
 
     return True
@@ -499,12 +506,12 @@ def find_grid(area_polygon, grid_edge_lengths: list, polygon_threshold: list):
     # hopefully clears out a mismatch in long/lat max and min values between biggest tile size and smallest
     square_edges_long_lat = generate_square_edges_long_lat(grid_edge_lengths, area_polygon)
 
-    # search for biggest tiles first
-    gdf_collection = gpd.GeoDataFrame()
+    gdf_collection = gpd.GeoDataFrame()  # collect all results in this geodataframe
 
-    grid_edge_lengths = sorted(grid_edge_lengths, reverse=True)  # from greatest to smallest value
-    polygon_threshold = sorted(polygon_threshold, reverse=True)  # from greatest to smallest value
+    grid_edge_lengths = np.flip(grid_edge_lengths)  # from greatest to smallest value, means settings flipped
+    polygon_threshold = np.flip(polygon_threshold)  # keep threshold values relative to edge lengths intact
 
+    # search starts at biggest tiles, the greatest edge length and relative polygon threshold
     for idx, edge_length in enumerate(grid_edge_lengths):
         gdf_one_tile_size = find_tile_groups_of_given_edge_length(area_polygon,
                                                                   square_edges_long_lat[f'{edge_length}'],
