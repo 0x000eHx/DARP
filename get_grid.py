@@ -26,12 +26,12 @@ if __name__ == '__main__':
         grid_gdf = find_grid(area_polygon,
                              settings['grid_edge_length_meter'],
                              settings['polygon_threshold'])
-
-        # save best results
-        file_name = generate_file_name(settings['geojson_file_name'])
-        grid_gdf.to_file(filename=f'./geodataframes/{file_name}.geojson', driver="GeoJSON")
-        print("Successfully finished grid generation and saved geometry to file!\n",
-              f'./geodataframes/{file_name}.geojson')
+        if not grid_gdf.empty:
+            # save best results
+            file_name = generate_file_name(settings['geojson_file_name'])
+            grid_gdf.to_file(filename=f'./geodataframes/{file_name}.geojson', driver="GeoJSON")
+            print("Successfully finished grid generation and saved geometry to file!\n",
+                  f'./geodataframes/{file_name}.geojson')
 
     else:
         print("check_edge_length_polygon_threshold() or check_real_start_points() failed!")
