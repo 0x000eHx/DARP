@@ -21,16 +21,16 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
     union_area = make_valid(unary_union(multipoly))
     minx, miny, maxx, maxy = union_area.bounds
 
-    tiles_longitude = round((maxx - minx) / dict_tile_width_height['tile_width'])  # colums
-    tiles_latitude = round((maxy - miny) / dict_tile_width_height['tile_height'])  # rows
+    num_tiles_longitude = round((maxx - minx) / dict_tile_width_height['tile_width'])  # colums
+    num_tiles_latitude = round((maxy - miny) / dict_tile_width_height['tile_height'])  # rows
 
-    np_bool_grid = np.full(shape=(int(tiles_latitude), int(tiles_longitude)), fill_value=False, dtype=bool)
+    np_bool_grid = np.full(shape=(num_tiles_latitude, num_tiles_longitude), fill_value=False, dtype=bool)
 
-    columns_range = np.arange(minx + dict_multipoly_offset['offset_latitude'],
-                              maxx + dict_multipoly_offset['offset_latitude'] + dict_tile_width_height['tile_width'],
+    columns_range = np.arange(minx + dict_multipoly_offset['offset_longitude'],
+                              maxx + dict_multipoly_offset['offset_longitude'] + dict_tile_width_height['tile_width'],
                               dict_tile_width_height['tile_width'])  # scan from left to right
-    rows_range = np.arange(miny + dict_multipoly_offset['offset_longitude'],
-                           maxy + dict_multipoly_offset['offset_longitude'] + dict_tile_width_height['tile_height'],
+    rows_range = np.arange(miny + dict_multipoly_offset['offset_latitude'],
+                           maxy + dict_multipoly_offset['offset_latitude'] + dict_tile_width_height['tile_height'],
                            dict_tile_width_height['tile_height'])
     rows_range = np.flip(rows_range)  # scan from top to bottom
 
@@ -254,7 +254,7 @@ def check_edge_length_polygon_threshold(grid_edge_lengths, polys_threshold):
     poly_threshold_array = np.array(polys_threshold)
 
     if edge_length_array.shape != poly_threshold_array.shape:
-        print("Number defined edges don't match number polygon_threshold. Abort!")
+        print("Number defined edge lengths don't match number polygon_threshold. Abort!")
         return False
 
     for i in edge_length_array:
