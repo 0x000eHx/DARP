@@ -51,11 +51,11 @@ if __name__ == '__main__':
         # load series of multipolygons with specific tile size out of geodataframe
         different_area_sizes = grid_gdf.covered_area.unique()
         max_val = max(different_area_sizes)
-        biggest_areas = grid_gdf.loc[grid_gdf['covered_area'] == max_val]
-        dict_tile_data = {"tile_width": biggest_areas.tile_width[0],
-                          "tile_height": biggest_areas.tile_height[0]}
-        dict_offset = {'offset_longitude': biggest_areas.offset_longitude[0],
-                       'offset_latitude': biggest_areas.offset_latitude[0]}
+        biggest_area_series = grid_gdf.loc[grid_gdf['covered_area'] == max_val]
+        dict_tile_data = {"tile_width": biggest_area_series.tile_width.values[0],
+                          "tile_height": biggest_area_series.tile_height.values[0]}
+        dict_offset = {'offset_longitude': biggest_area_series.offset_longitude.values[0],
+                       'offset_latitude': biggest_area_series.offset_latitude.values[0]}
 
         # transform max_distance_per_robot into max_tiles_per_robot for DARP
         list_start_point_coords = settings['real_start_points']
@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
         export_file_name = generate_file_name(settings['geojson_file_name'])
 
-        for multipoly in biggest_areas.geometry.to_list():
+        for multipoly in biggest_area_series.geometry.to_list():
 
             # post gridding numpy contour bool array generation
             np_bool_array = generate_numpy_contour_array(multipoly, dict_tile_data, dict_offset)
