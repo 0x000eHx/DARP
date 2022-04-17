@@ -613,7 +613,6 @@ class DARP:
 
             # next iteration of DARP with increased flexibility
             if not success:
-                absolut_iterations += self.MaxIter
                 if self.MaxIter > 10000:
                     self.MaxIter = int(self.MaxIter / 2)
                 self.termThr += 10
