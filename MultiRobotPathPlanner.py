@@ -8,8 +8,6 @@ import sys
 from turns import turns
 import matplotlib.pyplot as plt
 import os
-import imageio
-from tqdm.auto import tqdm
 import moviepy.editor as mp
 
 
@@ -141,4 +139,4 @@ class MultiRobotPathPlanner(DARP):
         clip = mp.VideoFileClip("./result_export/" + self.export_file_name + ".gif")
         clip.write_videofile("./result_export/" + self.export_file_name + ".mp4", audio=False, threads=num_of_processes)
         clip.close()
-        print("Created .mp4 video from assignment matrix animation .gif file")
+        print("Created MP4 video from assignment matrix animation GIF file")

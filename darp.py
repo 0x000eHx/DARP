@@ -269,7 +269,7 @@ def euclidian_distance_points2d(array1: np.array, array2: np.array) -> np.float_
            ) ** 0.5  # faster function with faster sqrt
 
 
-# TODO make numba compatible! outputs of inappropriate values?
+# TODO make numba compatible! output has inappropriate values?
 #  at some point ArrayOfElements has at least one entry -1 (from/in assign func)
 #  maybe doesn't work with numba? Don't know... implemented mask now to see if it solves this problem
 def normalize_metric_matrix(non_obs_pos: np.ndarray, area_bool: np.ndarray, metric_matrix: np.ndarray):
@@ -305,7 +305,7 @@ def construct_assignment_matrix(area_bool: np.ndarray, initial_positions: np.nda
     termThr = 0
 
     if effectiveSize % num_init_pos != 0:
-        termThr = 10
+        termThr = 1
 
     diff_tiles = effectiveSize - max_tiles_per_robot * num_init_pos
     # cause this is a numba compiled func the commandline messages will be thrown from check_max_tiles func
@@ -415,7 +415,7 @@ class DARP:
         # check if the max_tiles value checks out and if max_tiles times start points will cover the whole area or not
         if check_max_tiles(start_positions, max_tiles_per_robot, area_bool):
             print("Max tiles per robot match with number of initial start points, continuing...")
-            self.max_tiles = max_tiles_per_robot
+            self.max_tiles = max_tiles_per_robot  # TODO input must be numpy array of several max_tiles per robot and consider this in the construct_assignment_matrix func
         else:
             print("Aborting after maximum tiles per robot check")
             sys.exit(2)
@@ -486,9 +486,9 @@ class DARP:
 
         assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
 
-        # to reduce overall tiles movement exchange values in self.DesirableAssign the way, that the lowest value of
-        # self.ArrayOfElements after first voronoi diagram area dividing is connected
-        # to the lowest entry in self.DesirableAssign
+        # to reduce overall tile reassignment value over time in self.DesirableAssign:
+        # after assigning tiles as voronoi diagram that the lowest value of self.ArrayOfElements should match
+        # to the lowest entry in self.DesirableAssign... small optimization from the start but not necessary
         if self.DesirableAssign.max() > self.DesirableAssign.min():
             arrayofelements_lowest_val_idx = self.ArrayOfElements.argmin()
             desirableassign_lowest_val_idx = self.DesirableAssign.argmin()
@@ -621,13 +621,14 @@ class DARP:
         getBinaryRobotRegions(self.BinaryRobotRegions, self.non_obstacle_positions, self.A)
         return success, absolut_iterations
 
-    def video_export_add_frame(self, iteration: int, connected_regions: np.ndarray):
-        framerate = 5
+    def video_export_add_frame(self, iteration: int, connected_regions: np.ndarray, draw_meta_infos=False):
+        framerate = 5  # every 5th iteration
 
         if (iteration % framerate) == 0 or iteration == 0:
             uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))  # TODO interpolate or scale?
             temp_img = Image.fromarray(uint8_array)  # mode="RGB"
-            font = ImageFont.truetype("arial.ttf", 9)
-            txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nSeed: {str(self.seed_value)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(self.ArrayOfElements)}\nTiles Connected:\n{str(connected_regions)}\nIteration: {iteration}'
-            ImageDraw.Draw(temp_img).multiline_text((3, 3), txt, spacing=2, font=font)
+            if draw_meta_infos:  # if drawn pictures are big enough: set True to view darp metadata in gif
+                font = ImageFont.truetype("arial.ttf", 9)
+                txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nSeed: {str(self.seed_value)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(self.ArrayOfElements)}\nTiles Connected:\n{str(connected_regions)}\nIteration: {iteration}'
+                ImageDraw.Draw(temp_img).multiline_text((3, 3), txt, spacing=2, font=font)
             self.gif_writer.append_data(np.asarray(temp_img))
