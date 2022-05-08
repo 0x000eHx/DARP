@@ -21,11 +21,6 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
     union_area = make_valid(unary_union(multipoly))
     minx, miny, maxx, maxy = union_area.bounds
 
-    num_tiles_longitude = round((maxx - minx) / dict_tile_width_height['tile_width'])  # colums
-    num_tiles_latitude = round((maxy - miny) / dict_tile_width_height['tile_height'])  # rows
-
-    np_bool_grid = np.full(shape=(num_tiles_latitude, num_tiles_longitude), fill_value=False, dtype=bool)
-
     columns_range = np.arange(minx + dict_multipoly_offset['offset_longitude'],
                               maxx + dict_multipoly_offset['offset_longitude'] + dict_tile_width_height['tile_width'],
                               dict_tile_width_height['tile_width'])  # scan from left to right
@@ -33,6 +28,7 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
                            maxy + dict_multipoly_offset['offset_latitude'] + dict_tile_width_height['tile_height'],
                            dict_tile_width_height['tile_height'])
     rows_range = np.flip(rows_range)  # scan from top to bottom
+    np_bool_grid = np.full(shape=(rows_range.shape[0], columns_range.shape[0]), fill_value=False, dtype=bool)
 
     # Create queues
     task_queue = Queue()
