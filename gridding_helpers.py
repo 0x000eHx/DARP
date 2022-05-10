@@ -17,7 +17,7 @@ def get_start_points_from_coords(list_start_point_coords: list, numpy_bool_array
 
 
 def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height, dict_multipoly_offset):
-
+    print("Generate numpy contour bool_area_array from given number of multipolygons")
     union_area = make_valid(unary_union(multipoly))
     minx, miny, maxx, maxy = union_area.bounds
 
@@ -59,7 +59,7 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
     # Tell child processes to stop
     for i in range(num_of_processes):
         task_queue.put('STOP')
-
+    print("numpy bool_area_array generated...")
     return np_bool_grid
 
 

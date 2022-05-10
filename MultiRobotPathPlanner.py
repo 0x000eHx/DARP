@@ -13,13 +13,13 @@ import moviepy.editor as mp
 
 class MultiRobotPathPlanner(DARP):
     def __init__(self, np_bool_area: np.ndarray, max_iter: np.uint32, cc_variation: float, random_level: float,
-                 dynamic_cells: np.uint32, max_tiles_pr: int, seed, importance: bool,
-                 start_positions, visualization, image_export, video_export, export_file_name):
+                 dynamic_cells: np.uint32, dict_darp_start: dict, seed, importance: bool, visualization,
+                 image_export, video_export, export_file_name):
 
         self.export_file_name = export_file_name
 
-        DARP.__init__(self, np_bool_area, max_iter, cc_variation, random_level, dynamic_cells, max_tiles_pr, seed, importance,
-                      start_positions, visualization, video_export, self.export_file_name)
+        DARP.__init__(self, np_bool_area, max_iter, cc_variation, random_level, dynamic_cells, dict_darp_start, seed,
+                      importance, visualization, video_export, self.export_file_name)
 
         if not self.success:
             print("DARP did not manage to find a solution for the given configuration!")
