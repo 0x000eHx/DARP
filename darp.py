@@ -12,7 +12,6 @@ from pyinstrument import Profiler
 from numba import njit
 
 np.set_printoptions(threshold=sys.maxsize)
-float_overflow = np.finfo(np.float64).max / 10
 
 
 def check_start_parameter(dict_start_parameter: dict, bool_area: np.ndarray):
@@ -291,7 +290,7 @@ def normalize_metric_matrix(non_obs_pos: np.ndarray, area_bool: np.ndarray, metr
 
 @njit(fastmath=True)
 def check_for_near_float64_overflow(metric_matrix: np.ndarray):
-    if np.amax(metric_matrix) > (float_overflow):
+    if np.amax(metric_matrix) > (np.finfo(np.float64).max / 10):
         return True
     else:
         return False
@@ -314,20 +313,31 @@ def construct_assignment_matrix(area_bool: np.ndarray,
         term_thr = 0
 
     diff_tiles = effective_size - np.sum(desireable_tile_assignment)
-
-    # ATTENTION! must exit DARP before this point, if diff_tiles > 0 (see check_start_parameter func)
+    # cause this is a numba jit compiled func there can't be any commandline output
     if diff_tiles < 0:
-        while int(desireable_tile_assignment[-1] + diff_tiles) < 0:
-            # tiles to cover by last startpoint unnecessary -> reduce startpoint count to maximize efficiency
-            # remove tiles_count of last desireable_tile_assignment entry from diff_tiles
-            diff_tiles += desireable_tile_assignment[-1]
-            # then remove last entries in
-            initial_positions = initial_positions[:-1]
-            desireable_tile_assignment = desireable_tile_assignment[:-1]
-            # do so many times until int(desireable_tile_assignment[-1] + diff_tiles) is greater 0
+        if (desireable_tile_assignment[-1] + diff_tiles) > 0:
+            # is diff greater zero assign "leftovers" to last entry in desireable_tile_assignment
+            desireable_tile_assignment[-1] = desireable_tile_assignment[-1] + diff_tiles
+        elif (desireable_tile_assignment[-1] + diff_tiles) < 0:
+            # tiles to cover by last drone / startpoint unnecessary, reduce startpoint count to maximize efficiency
+            while (desireable_tile_assignment[-1] + diff_tiles) < 0:
+                initial_positions = initial_positions[:-1]
+                desireable_tile_assignment = desireable_tile_assignment[:-1]
 
-        # last robot won't get its full desireable_tile_assignment tiles_count
-        desireable_tile_assignment[-1] += diff_tiles
+        else:
+
+        if abs(diff_tiles) > max_tiles_per_robot:
+            # if number of assignable tiles misses more than one max_tiles_per_robot load:
+            # divide all tiles equally to all robots (see check_max_tiles func print)
+            DesirableAssign = np.full(num_init_pos, effective_size / num_init_pos, dtype=np.float_)
+        else:
+            # float values too if necessary
+            DesirableAssign = np.full(num_init_pos, max_tiles_per_robot, dtype=np.float_)
+            # last robot won't get a full max_tiles_per_robot load but only diff_tiles
+            DesirableAssign[num_init_pos - 1] = max_tiles_per_robot - abs(diff_tiles)
+    else:
+        # ATTENTION! must exit DARP before this point, if diff_tiles > 0 (see check_max_tiles func)
+        DesirableAssign = np.full(num_init_pos, max_tiles_per_robot, dtype=np.float_)
 
     metrics_array = np.zeros((num_init_pos, rows, cols), dtype=np.float_)
     importance_array = np.zeros((num_init_pos, rows, cols), dtype=np.float_)
@@ -352,7 +362,7 @@ def construct_assignment_matrix(area_bool: np.ndarray,
             if importance_array[idx, cell[0], cell[1]] < min_importance[idx]:
                 min_importance[idx] = importance_array[idx, cell[0], cell[1]]
 
-    return metrics_array, non_obstacle_positions, term_thr, notiles, initial_positions, desireable_tile_assignment, importance_array, min_importance, max_importance, effective_size
+    return metrics_array, non_obstacle_positions, term_thr, notiles, DesirableAssign, importance_array, min_importance, max_importance, effective_size
 
 
 @njit(cache=True, fastmath=True)
@@ -383,8 +393,7 @@ def check_assignment_state(thresh: int,
     :return: True, if criteria fits; False, if criteria aren't met
     """
     for idx, r in enumerate(connected_robot_regions):
-        if np.absolute(desirable_tile_assignment[idx] - current_tile_assignment[idx]) > thresh or not \
-                connected_robot_regions[idx]:
+        if np.absolute(desirable_tile_assignment[idx] - current_tile_assignment[idx]) > thresh or not connected_robot_regions[idx]:
             return False
     return True
 
@@ -439,7 +448,7 @@ class DARP:
         self.A = np.full((self.rows, self.cols), len(self.init_robot_pos))
         self.GridEnv_bool = area_bool
         measure_start = time.time()
-        self.MetricMatrix, self.non_obstacle_positions, self.termThr, self.Notiles, self.init_robot_pos, self.DesirableAssign, self.TilesImportance, self.MinimumImportance, self.MaximumImportance, self.effectiveTileNumber = construct_assignment_matrix(
+        self.MetricMatrix, self.non_obstacle_positions, self.termThr, self.Notiles, self.TilesImportance, self.MinimumImportance, self.MaximumImportance, self.effectiveTileNumber = construct_assignment_matrix(
             self.GridEnv_bool, np.asarray(self.init_robot_pos), self.DesirableAssign)
         measure_end = time.time()
         print("Measured time construct_assignment_matrix(): ", (measure_end - measure_start), " sec")
@@ -497,8 +506,7 @@ class DARP:
             print("Rearranging lowest value in DesirableAssign to match lowest value in ArrayOfElements!")
             if arrayofelements_lowest_val_idx != desirableassign_lowest_val_idx:
                 temp = self.DesirableAssign[desirableassign_lowest_val_idx]
-                self.DesirableAssign[desirableassign_lowest_val_idx] = self.DesirableAssign[
-                    arrayofelements_lowest_val_idx]
+                self.DesirableAssign[desirableassign_lowest_val_idx] = self.DesirableAssign[arrayofelements_lowest_val_idx]
                 self.DesirableAssign[arrayofelements_lowest_val_idx] = temp
 
         if self.video_export:
@@ -508,8 +516,7 @@ class DARP:
             self.assignment_matrix_visualization.placeCells()
 
         print("update() Start:\nDesirable Assignments:", self.DesirableAssign,
-              ", Tiles per Robot:", self.ArrayOfElements, "\nTermination threshold: max", self.termThr,
-              "tiles difference per robot to desirable value.")
+              ", Tiles per Robot:", self.ArrayOfElements, "\nTermination threshold: max", self.termThr, "tiles difference per robot to desirable value.")
 
         time_start = time.time()
         while self.termThr <= self.Dynamic_Cells and not success:
@@ -536,8 +543,7 @@ class DARP:
                     num_labels, labels_im = cv2.connectedComponents(self.connectivity[idx, :, :], connectivity=4)
                     if num_labels > 2:
                         self.ConnectedRobotRegions[idx] = False
-                        BinaryRobot, BinaryNonRobot = construct_binary_images(self.non_obstacle_positions, labels_im,
-                                                                              robot)
+                        BinaryRobot, BinaryNonRobot = construct_binary_images(self.non_obstacle_positions, labels_im, robot)
                         ConnectedMultiplier = calc_connected_multiplier(self.non_obstacle_positions,
                                                                         self.ConnectedMultiplier_variation,
                                                                         NormalizedEuclideanDistanceBinary(True,
@@ -595,8 +601,7 @@ class DARP:
                     # time.sleep(0.1)
 
                 if check_for_near_float64_overflow(self.MetricMatrix):
-                    self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.GridEnv_bool,
-                                                                self.MetricMatrix)
+                    self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.GridEnv_bool, self.MetricMatrix)
                     print("\nMetricMatrix normalized")
 
                 if check_assignment_state(self.termThr, self.ConnectedRobotRegions,
@@ -606,8 +611,8 @@ class DARP:
                     if self.video_export:
                         self.gif_writer.close()
                     print("Found Final Assignment Matrix:",
-                          absolut_iterations, "Iterations in", (time_stop - time_start),
-                          "sec;", absolut_iterations / (time_stop - time_start), "iter/sec",
+                          absolut_iterations, "Iterations in", (time_stop-time_start),
+                          "sec;", absolut_iterations/(time_stop-time_start), "iter/sec",
                           "\nDesirable Assignments:", self.DesirableAssign, "\nTiles per Robot:", self.ArrayOfElements)
                     break
 
@@ -635,6 +640,6 @@ class DARP:
             temp_img = Image.fromarray(uint8_array)  # mode="RGB"
             if draw_meta_infos:  # if drawn pictures are big enough: set True to view darp metadata in gif
                 font = ImageFont.truetype("arial.ttf", 9)
-                txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nSeed: {str(self.seed_value)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(self.ArrayOfElements)}\nTiles Connected:\n{str(connected_regions)}\nIteration: {iteration}'
+                txt = f'{time.strftime("%H:%M:%S %d.%m.%Y")}\nInitial positions:\n{str(self.init_robot_pos)}\nMaximum Tiles per robot: {str(self.max_tiles)}\nSeed: {str(self.seed_value)}\nRandom Influence: {self.randomLevel}\nCriterion Matrix Variation: {self.ConnectedMultiplier_variation}\nImportance: {self.Importance}\nDesired Assignment:\n{str(self.DesirableAssign)}\nAssignment per Robot:\n{str(self.ArrayOfElements)}\nTiles Connected:\n{str(connected_regions)}\nIteration: {iteration}'
                 ImageDraw.Draw(temp_img).multiline_text((3, 3), txt, spacing=2, font=font)
             self.gif_writer.append_data(np.asarray(temp_img))
