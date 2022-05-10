@@ -71,18 +71,28 @@ if __name__ == '__main__':
 
             # post gridding numpy contour bool array generation
             np_bool_array = generate_numpy_contour_array(multipoly, dict_tile_data, dict_offset)
-
             relevant_tiles_count = np.count_nonzero(np_bool_array) - len(list_start_point_coords)
 
-            # check which tile in numpy bool array contains the start points
-
-            start_points = get_random_start_points_list(5, np_bool_array)
+            # TEMP: search for start points within given area array
+            start_points = get_random_start_points_list(4, np_bool_array)
+            dict_darp_startparameters = {0: {'row': start_points[0][0],
+                                             'col': start_points[0][1],
+                                             'tiles_count': 500},
+                                         1: {'row': start_points[1][0],
+                                             'col': start_points[1][1],
+                                             'tiles_count': 500},
+                                         2: {'row': start_points[2][0],
+                                             'col': start_points[2][1],
+                                             'tiles_count': 500},
+                                         3: {'row': start_points[3][0],
+                                             'col': start_points[3][1],
+                                             'tiles_count': 500}}
 
             handle = MultiRobotPathPlanner(np_bool_array, settings['darp_max_iter'], settings['darp_cc_variation'],
                                            settings['darp_random_level'], settings['darp_dynamic_tiles_threshold'],
-                                           max_tiles_per_robot, settings['darp_random_seed_value'],
-                                           settings['darp_trigger_importance'], start_points,
-                                           False, settings['trigger_image_export_final_assignment_matrix'],
+                                           dict_darp_startparameters, settings['darp_random_seed_value'],
+                                           settings['darp_trigger_importance'], False,
+                                           settings['trigger_image_export_final_assignment_matrix'],
                                            settings['trigger_video_export_assignment_matrix_changes'],
                                            export_file_name)  # TODO a real name for every grid of tile_size x
     else:

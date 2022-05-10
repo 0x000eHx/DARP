@@ -14,49 +14,51 @@ from numba import njit
 np.set_printoptions(threshold=sys.maxsize)
 
 
-def check_start_positions(start_positions, area: np.ndarray):
-    for position in start_positions:
-        if not (0 <= position[0] < area.shape[0]) or not (0 <= position[1] < area.shape[1]):
-            print("Start position: " + str(position) + " is not inside the given area!")
+def check_start_parameter(dict_start_parameter: dict, bool_area: np.ndarray):
+    print("Checking DARP start parameters now...")
+    start_positions_set = set()  # check for duplicate, even if dict_start_parameter creation could have avoided it
+    # sum up tiles_counts per robot / startpoint
+    sum_tiles_covered_area = 0
+    # check max start points
+    for p_id, p_info in dict_start_parameter.items():
+        start_positions_set.add((p_info['row'], p_info['col']))
+        if not (0 <= p_info['row'] < bool_area.shape[0]) or not (0 <= p_info['col'] < bool_area.shape[1]):
+            print(f"Start position [{p_info['row']},{p_info['col']}] is not inside the given area!")
             return False
-        elif not area[position]:
-            print("Start position: " + str(position) + " is on a obstacle tile inside the given area!")
+        elif not bool_area[p_info['row'], p_info['col']]:
+            print(f"Start position [{p_info['row']},{p_info['col']}] is on a obstacle tile inside the given area!")
             return False
-    start_positions_set = set(start_positions)
-    if len(start_positions_set) != len(start_positions):
+
+        if p_info['tiles_count'] < 0:
+            print("Can't assign negative value of tiles_count per robot.")
+            return False
+        elif p_info['tiles_count'] == 0:
+            print("Can't assign a zero value to tiles_count per robot.")
+            return False
+
+        sum_tiles_covered_area += p_info['tiles_count']
+
+    if len(start_positions_set) != len(dict_start_parameter.items()):
         print("Found a duplicate start point. Can't start DARP under these premise.")
         return False
-    return True
 
+    # check max tiles_count
+    non_obstacle_positions = np.argwhere(bool_area)
+    effective_tile_number = non_obstacle_positions.shape[0] - len(dict_start_parameter.items())
+    print("Effective number of tiles: ", effective_tile_number)
 
-def check_max_tiles(start_positions: list, max_tiles: int, area: np.ndarray):
-
-    if max_tiles < 0:
-        print("Can't assign negative value of max_tiles per robot.")
-        return False
-    elif max_tiles == 0:
-        print("Can't assign zero value to max_tiles per robot.")
-        return False
-
-    non_obstacle_positions = np.argwhere(area)
-    effectiveTileNumber = non_obstacle_positions.shape[0] - len(start_positions)
-    print("Effective number of tiles: ", effectiveTileNumber)
-    sum_tiles_covered_area = len(start_positions) * max_tiles
-    diff_tiles = effectiveTileNumber - sum_tiles_covered_area
+    diff_tiles = effective_tile_number - sum_tiles_covered_area
     if diff_tiles < 0:
-        print("Amount of area tiles to cover is smaller than sum of tiles covered by all robots.")
-        if abs(diff_tiles) > max_tiles:
-            print("At least one initial start point not necessary...",
-                  "Will lower max_tiles_per_robot value to cover an equal number of tiles per robot.",
-                  effectiveTileNumber / len(start_positions), "will be the new max_tiles_per_robot value.")
-        else:
-            print("The last robot only needs to cover", max_tiles - abs(diff_tiles), "instead of", max_tiles, "tiles.")
+        print("Amount of area tiles to cover (" + str(effective_tile_number) +
+              ") is smaller than sum of tiles covered by all robots (" + str(sum_tiles_covered_area) + ").")
     elif diff_tiles > 0:
-        print("A number of", diff_tiles, "tiles is not assignable to any robot (with max tiles per robot).",
+        print("A number of", str(diff_tiles), "tiles hasn't been assigned to any robot.\n",
               "Aborting Calculation! Please start DARP with at least one more start point")
         return False
     else:
         print("The number of area tiles to cover match the sum of all covered tiles by robots. Perfect!")
+
+    # if everything checks out
     return True
 
 
@@ -295,25 +297,39 @@ def check_for_near_float64_overflow(metric_matrix: np.ndarray):
 
 
 @njit(cache=True, fastmath=True)
-def construct_assignment_matrix(area_bool: np.ndarray, initial_positions: np.ndarray, max_tiles_per_robot: int):
+def construct_assignment_matrix(area_bool: np.ndarray,
+                                initial_positions: np.ndarray,
+                                desireable_tile_assignment: np.ndarray):
     rows, cols = area_bool.shape
-    Notiles = rows * cols
+    notiles = rows * cols
 
     non_obstacle_positions = np.argwhere(area_bool)
     num_init_pos = initial_positions.shape[0]
-    effectiveSize = non_obstacle_positions.shape[0] - num_init_pos  # all assignable tiles
-    termThr = 0
+    effective_size = non_obstacle_positions.shape[0] - num_init_pos  # all assignable tiles
 
-    if effectiveSize % num_init_pos != 0:
-        termThr = 1
+    if effective_size % num_init_pos != 0:
+        term_thr = 1
+    else:
+        term_thr = 0
 
-    diff_tiles = effectiveSize - max_tiles_per_robot * num_init_pos
-    # cause this is a numba compiled func the commandline messages will be thrown from check_max_tiles func
+    diff_tiles = effective_size - np.sum(desireable_tile_assignment)
+    # cause this is a numba jit compiled func there can't be any commandline output
     if diff_tiles < 0:
+        if (desireable_tile_assignment[-1] + diff_tiles) > 0:
+            # is diff greater zero assign "leftovers" to last entry in desireable_tile_assignment
+            desireable_tile_assignment[-1] = desireable_tile_assignment[-1] + diff_tiles
+        elif (desireable_tile_assignment[-1] + diff_tiles) < 0:
+            # tiles to cover by last drone / startpoint unnecessary, reduce startpoint count to maximize efficiency
+            while (desireable_tile_assignment[-1] + diff_tiles) < 0:
+                initial_positions = initial_positions[:-1]
+                desireable_tile_assignment = desireable_tile_assignment[:-1]
+
+        else:
+
         if abs(diff_tiles) > max_tiles_per_robot:
             # if number of assignable tiles misses more than one max_tiles_per_robot load:
             # divide all tiles equally to all robots (see check_max_tiles func print)
-            DesirableAssign = np.full(num_init_pos, effectiveSize / num_init_pos, dtype=np.float_)
+            DesirableAssign = np.full(num_init_pos, effective_size / num_init_pos, dtype=np.float_)
         else:
             # float values too if necessary
             DesirableAssign = np.full(num_init_pos, max_tiles_per_robot, dtype=np.float_)
@@ -346,7 +362,7 @@ def construct_assignment_matrix(area_bool: np.ndarray, initial_positions: np.nda
             if importance_array[idx, cell[0], cell[1]] < min_importance[idx]:
                 min_importance[idx] = importance_array[idx, cell[0], cell[1]]
 
-    return metrics_array, non_obstacle_positions, termThr, Notiles, DesirableAssign, importance_array, min_importance, max_importance, effectiveSize
+    return metrics_array, non_obstacle_positions, term_thr, notiles, DesirableAssign, importance_array, min_importance, max_importance, effective_size
 
 
 @njit(cache=True, fastmath=True)
@@ -384,14 +400,12 @@ def check_assignment_state(thresh: int,
 
 class DARP:
     def __init__(self, area_bool: np.ndarray, max_iter: np.uint32, cc_variation: float, random_level: float,
-                 dynamic_cells: np.uint32, max_tiles_per_robot: int, seed_value, importance: bool, start_positions: list[tuple],
+                 dynamic_cells: np.uint32, dict_darp_startparameter: dict, seed_value, importance: bool,
                  visualization: bool, video_export: bool, import_file_name: str):
 
         print("Following dam file will be processed: " + import_file_name)
         print("Grid Dimensions: ", str(area_bool.shape))
-        print("Robot Number: ", len(start_positions))
-        print("Initial Robot positions: ", start_positions)
-        print("Maximum number of tiles per robot:", max_tiles_per_robot)
+        print("DARP Start Parameter: ", dict_darp_startparameter)
         print("Random Seed:", seed_value)
         print("Maximum Iterations: " + str(max_iter))
         print("Dynamic Cells Count: " + str(dynamic_cells))
@@ -404,25 +418,22 @@ class DARP:
         # profiler.start()
         ###########################
 
-        # check the robot start positions, is any of them situated on obstacle tile?
-        if check_start_positions(start_positions, area_bool):
-            print("Robot start positions are inside given area, continuing...")
-            self.init_robot_pos = start_positions
-        else:
-            print("Aborting after start positions check")
-            sys.exit(1)
+        # check the robot start positions and tile_counts per startpoint
+        if check_start_parameter(dict_darp_startparameter, area_bool):
+            print("The start parameters look alright. Continue...")
+            self.init_robot_pos = []
+            self.DesirableAssign = np.zeros(len(dict_darp_startparameter.items()))
+            for p_id, p_info in dict_darp_startparameter.items():
+                self.init_robot_pos.append((p_info['row'], p_info['col']))
+                self.DesirableAssign[p_id] = p_info['tiles_count']
 
-        # check if the max_tiles value checks out and if max_tiles times start points will cover the whole area or not
-        if check_max_tiles(start_positions, max_tiles_per_robot, area_bool):
-            print("Max tiles per robot match with number of initial start points, continuing...")
-            self.max_tiles = max_tiles_per_robot  # TODO input must be numpy array of several max_tiles per robot and consider this in the construct_assignment_matrix func
         else:
-            print("Aborting after maximum tiles per robot check")
-            sys.exit(2)
+            print("Aborting DARP;  start parameter check failed!")
+            sys.exit(1)
 
         if not check_array_continuity(area_bool):
             print("Given area is divided into several not connected segments. Abort!")
-            sys.exit(3)
+            sys.exit(2)
 
         self.rows, self.cols = area_bool.shape
         self.visualization = visualization  # should the results get presented in pygame
@@ -437,8 +448,8 @@ class DARP:
         self.A = np.full((self.rows, self.cols), len(self.init_robot_pos))
         self.GridEnv_bool = area_bool
         measure_start = time.time()
-        self.MetricMatrix, self.non_obstacle_positions, self.termThr, self.Notiles, self.DesirableAssign, self.TilesImportance, self.MinimumImportance, self.MaximumImportance, self.effectiveTileNumber = construct_assignment_matrix(
-            self.GridEnv_bool, np.asarray(self.init_robot_pos), self.max_tiles)
+        self.MetricMatrix, self.non_obstacle_positions, self.termThr, self.Notiles, self.TilesImportance, self.MinimumImportance, self.MaximumImportance, self.effectiveTileNumber = construct_assignment_matrix(
+            self.GridEnv_bool, np.asarray(self.init_robot_pos), self.DesirableAssign)
         measure_end = time.time()
         print("Measured time construct_assignment_matrix(): ", (measure_end - measure_start), " sec")
 
