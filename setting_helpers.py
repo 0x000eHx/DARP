@@ -3,14 +3,14 @@ import yaml
 
 def write_yaml_config_file(str_filepath):
     start_settings = {'geojson_file_name': 'Talsperre Malter.geojson',
-                      'grid_edge_length_meter': [8, 16],  # edge lengths in meter (can contain one or more values)
+                      'grid_edge_length_meter': [10, 30],  # edge lengths in meter (can contain one or more values)
                       'real_start_points': [
                           [13.653522254079629, 50.92603465830493],  # shapely x (longitude), y (latitude) values
                           [13.6500293945372, 50.91945111878728],
                           [13.654725066304804, 50.921186253206045],
                           [13.664545589728833, 50.907868824583616]
                       ],
-                      'polygon_threshold': [5, 15],
+                      'polygon_threshold': [5, 4],
                       # polygon groups with given number below this value will be considered irrelevant
                       # index is equivalent to index of edge length
                       'max_distance_per_robot': 10000,  # in meter
@@ -20,7 +20,7 @@ def write_yaml_config_file(str_filepath):
                       'darp_dynamic_tiles_threshold': 500,
                       'darp_cc_variation': 0.01,
                       'darp_random_level': 0.0001,
-                      'darp_random_seed_value': 1234,
+                      'darp_random_seed_value': None,
                       'darp_trigger_importance': False
                       }
 

@@ -1,5 +1,5 @@
 import sys
-from gridding_helpers import check_edge_length_polygon_threshold, check_real_start_points, find_grid, get_biggest_area_polygon
+from gridding_helpers import check_edge_length_polygon_threshold, find_grid, get_biggest_area_polygon
 import time
 from setting_helpers import load_yaml_config_file, write_yaml_config_file
 
@@ -23,9 +23,8 @@ if __name__ == '__main__':
         area_polygon = get_biggest_area_polygon(settings['geojson_file_name'])
 
         # find biggest grid of highest value in grid_edge_length_meter
-        grid_gdf = find_grid(area_polygon,
-                             settings['grid_edge_length_meter'],
-                             settings['polygon_threshold'])
+        grid_gdf = find_grid(area_polygon, settings['grid_edge_length_meter'], settings['polygon_threshold'])
+
         if not grid_gdf.empty:
             # save best results
             file_name = generate_file_name(settings['geojson_file_name'])
