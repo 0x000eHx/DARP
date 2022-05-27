@@ -4,8 +4,8 @@ from pathlib import Path
 import webbrowser
 import os
 import time
-from gridding_helpers import generate_numpy_contour_array, get_biggest_area_polygon, get_random_start_points_list, \
-    check_real_start_points, get_long_lat_diff
+from gridding_helpers import get_biggest_area_polygon, check_real_start_points, get_long_lat_diff
+from path_planning_pre_calculation import generate_numpy_contour_array, get_random_start_points_list, generate_stc_geodataframe
 from setting_helpers import load_yaml_config_file
 from MultiRobotPathPlanner import MultiRobotPathPlanner
 import folium
@@ -13,12 +13,12 @@ import numpy as np
 
 
 def generate_file_name(filename: str):
-    export_file_name = f'{time.strftime("%Y-%m-%d_%H-%M-%S")}_{str(filename)}'
+    f_name = f'{time.strftime("%Y-%m-%d_%H-%M-%S")}_{str(filename)}'
     # Replace all characters in dict
     b = {' ': '', '.geojson': ''}
     for x, y in b.items():
-        export_file_name = export_file_name.replace(x, y)
-    return export_file_name
+        f_name = f_name.replace(x, y)
+    return f_name
 
 
 def newest_file_in_folder(path_to_folder):
@@ -38,13 +38,13 @@ if __name__ == '__main__':
     grid_gdf = gpd.read_file(filename=f'./geodataframes/{last_file_no_suffix}.geojson')
 
     # draw loaded map in browser and save
-    fol_map = grid_gdf.explore('covered_area', cmap='Spectral')  # YlGn,jet, PuBu, legend=True, scheme='quantiles'
+    # fol_map = grid_gdf.explore('covered_area', cmap='Spectral')  # YlGn,jet, PuBu, legend=True, scheme='quantiles'
 
-    for sp in settings['real_start_points']:
-        folium.Marker([sp[1], sp[0]], popup="<i>Startpoint</i>").add_to(fol_map)
-    fol_map.save(f'htmls/{last_file_no_suffix}.html')
-    path = 'file:///' + os.getcwd() + '/htmls/' + last_file_no_suffix + '.html'
-    webbrowser.open(path)
+    # for sp in settings['real_start_points']:
+    #     folium.Marker([sp[1], sp[0]], popup="<i>Startpoint</i>").add_to(fol_map)
+    # fol_map.save(f'htmls/{last_file_no_suffix}.html')
+    # path = 'file:///' + os.getcwd() + '/htmls/' + last_file_no_suffix + '.html'
+    # webbrowser.open(path)
 
     if check_real_start_points(settings['geojson_file_name'], settings['real_start_points']):
 
@@ -70,11 +70,11 @@ if __name__ == '__main__':
         for multipoly in biggest_area_series.geometry.to_list():
 
             # post gridding numpy contour bool array generation
-            np_bool_array = generate_numpy_contour_array(multipoly, dict_tile_data, dict_offset)
+            np_bool_array, gdf_numpy_positions = generate_numpy_contour_array(multipoly, dict_tile_data, dict_offset)
             relevant_tiles_count = np.count_nonzero(np_bool_array) - len(list_start_point_coords)
 
-            # TEMP: search for start points within given area array
-            start_points = get_random_start_points_list(4, np_bool_array)
+            # TODO: search for start points within given area array
+            start_points = get_random_start_points_list(5, np_bool_array)
             dict_darp_startparameters = {0: {'row': start_points[0][0],
                                              'col': start_points[0][1],
                                              'tiles_count': 500},
@@ -86,8 +86,12 @@ if __name__ == '__main__':
                                              'tiles_count': 500},
                                          3: {'row': start_points[3][0],
                                              'col': start_points[3][1],
+                                             'tiles_count': 500},
+                                         4: {'row': start_points[4][0],
+                                             'col': start_points[4][1],
                                              'tiles_count': 500}}
 
+            # settings['darp_random_seed_value']
             handle = MultiRobotPathPlanner(np_bool_array, settings['darp_max_iter'], settings['darp_cc_variation'],
                                            settings['darp_random_level'], settings['darp_dynamic_tiles_threshold'],
                                            dict_darp_startparameters, settings['darp_random_seed_value'],
@@ -95,6 +99,19 @@ if __name__ == '__main__':
                                            settings['trigger_image_export_final_assignment_matrix'],
                                            settings['trigger_video_export_assignment_matrix_changes'],
                                            export_file_name)  # TODO a real name for every grid of tile_size x
+            if handle.darp_success:
+                gdf_path = generate_stc_geodataframe(gdf_numpy_positions, handle.darp_instance.A, handle.best_case.paths)
+
+                # draw loaded map in browser and save
+                fol_map = gdf_path.explore('assigned_drone', cmap='Spectral')  # YlGn,jet, PuBu, legend=True, scheme='quantiles'
+
+                for sp in settings['real_start_points']:
+                    folium.Marker([sp[1], sp[0]], popup="<i>Startpoint</i>").add_to(fol_map)
+                fol_map.save(f'htmls/biggest_tiles.html')
+                path = 'file:///' + os.getcwd() + '/htmls/biggest_tiles.html'
+                webbrowser.open(path)
+                pass
+
     else:
         print("start points don't match the given lake area")
 

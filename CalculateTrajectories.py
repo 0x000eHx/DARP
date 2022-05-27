@@ -3,7 +3,7 @@ from Edges import Edge, Graph
 import sys
 
 
-class CalculateTrajectories():
+class CalculateTrajectories:
     def __init__(self, r, c, MST):
         self.MAX_NODES = 4*r*c
         self.PathSequence = []
@@ -140,10 +140,10 @@ class CalculateTrajectories():
             if not found:
                 return
 
-            if (prevNode in self.nodes[currentNode]):
+            if prevNode in self.nodes[currentNode]:
                 self.nodes[currentNode].remove(prevNode)
 
-            if (currentNode in self.nodes[prevNode]):
+            if currentNode in self.nodes[prevNode]:
                 self.nodes[prevNode].remove(currentNode)
 
             i = int(currentNode/(2*self.cols))

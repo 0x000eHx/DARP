@@ -8,7 +8,7 @@ import imageio
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import os
-from pyinstrument import Profiler
+# from pyinstrument import Profiler
 from numba import njit
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -46,13 +46,13 @@ def check_start_parameter(dict_start_parameter: dict, bool_area: np.ndarray):
     # check max tiles_count
     non_obstacle_positions = np.argwhere(bool_area)
     effective_tile_number = non_obstacle_positions.shape[0] - len(dict_start_parameter.items())
-    print("Effective number of tiles: ", effective_tile_number)
+    print("Start parameters - effective number of tiles: ", effective_tile_number)
 
     diff_tiles = effective_tile_number - sum_tiles_covered_area
     if diff_tiles < 0:
         print("Amount of area tiles (" + str(effective_tile_number) +
               ") to cover is smaller than sum of tiles covered by all drones / startpoints ("
-              + str(sum_tiles_covered_area) + ").\nWill reduce number of start points until last startpoint covers"
+              + str(sum_tiles_covered_area) + ").\nWill reduce number of start points until last startpoint covers "
               "as many or less then given maximum tiles_count to maximize efficiency!")
     elif diff_tiles > 0:
         print("A number of", str(diff_tiles), "tiles isn't assignable to any robot.\n",
@@ -287,7 +287,7 @@ def euclidian_distance_points2d(array1: np.array,
 # TODO make numba compatible! output has inappropriate values?
 #  at some point ArrayOfElements has at least one entry -1 (from/in assign func)
 #  maybe doesn't work with numba? Don't know... implemented mask now to see if it solves this problem
-@njit(fastmath=True)
+# @njit(fastmath=True)
 def normalize_metric_matrix(non_obs_pos: np.ndarray,
                             area_bool: np.ndarray,
                             metric_matrix: np.ndarray):
@@ -458,6 +458,10 @@ class DARP:
             self.GridEnv_bool, np.asarray(self.init_robot_pos), self.DesirableAssign)
         measure_end = time.time()
         print("Measured time construct_assignment_matrix(): ", (measure_end - measure_start), " sec")
+        if len(dict_darp_startparameter) > self.DesirableAssign.shape[0]:
+            print("Number of Startpoints reduced to:", str(self.DesirableAssign.shape[0]))
+
+        print("Effective tiles after start parameter check and balancing:", str(self.effectiveTileNumber))
 
         self.A = np.full((self.rows, self.cols), len(self.init_robot_pos))
         self.connectivity = np.zeros((len(self.init_robot_pos), self.rows, self.cols), dtype=np.uint8)
@@ -485,20 +489,15 @@ class DARP:
                 os.makedirs(movie_file_path.parent)
             self.gif_writer = imageio.get_writer(movie_file_path, mode='I', duration=0.15)
 
-        if None:
+        if seed_value is None:
             self.seed_value = None
         else:
             if seed_value > 0:
                 self.seed_value = seed_value
                 seed(self.seed_value)  # correct numba seeding
 
-        measure_start = time.time()
-        self.success, self.absolute_iterations = self.update()
-        measure_end = time.time()
-        print("Elapsed time update(): ", (measure_end - measure_start), "sec")
-
-    def update(self):
-        print("update() Start:")
+    def divideRegions(self):
+        print("divideRegions() Start:")
         success = False
         criterionMatrix = np.zeros((self.rows, self.cols))
         absolut_iterations = 0  # absolute iterations number which were needed to find optimal result
@@ -523,7 +522,7 @@ class DARP:
             self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
 
         if self.visualization:
-            self.assignment_matrix_visualization.placeCells()
+            self.assignment_matrix_visualization.placeCells(self.A)
 
         print("Desirable Assignments:", self.DesirableAssign, ", Tiles per Robot:", self.ArrayOfElements,
               "\nTermination threshold: max", self.termThr, "tiles difference per robot to desirable value.")
@@ -608,7 +607,7 @@ class DARP:
                     self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
 
                 if self.visualization:
-                    self.assignment_matrix_visualization.placeCells(iteration_number=absolut_iterations)
+                    self.assignment_matrix_visualization.placeCells(self.A, iteration_number=absolut_iterations)
                     # time.sleep(0.1)
 
                 if check_for_near_float64_overflow(self.MetricMatrix):

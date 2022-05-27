@@ -7,7 +7,7 @@ See an example scan in 3D at [sketchfab.com](https://sketchfab.com/3d-models/rie
 A small boat drone with a bathymetric scanner can only move a certain distance until its battery is empty and needs a refill.
 Dividing the lake into regions with a defined number of tiles is one step. Rearranging the grid around every drone's start point by the DARP algorithm in used to find an optimal solution considered the distance of every tile inside the lake area.
 
-After finding the optimal regions a path planning algorithm has to find a way with the lowest number of turns and the highest number of longest possible line segments. This way through every region will be exportable as [WGS 84 (EPSG:4326)](https://en.wikipedia.org/wiki/World_Geodetic_System) path for usage in automatic path finding programs.  
+After finding the optimal regions a path planning algorithm has to find a way with the lowest number of turns and the highest number of the longest possible line segments. This way through every region will be exportable as [WGS 84 (EPSG:4326)](https://en.wikipedia.org/wiki/World_Geodetic_System) path for usage in automatic path finding programs.  
 
 
 ### DARP: Divide Areas Algorithm for Optimal Multi-Robot Coverage Path Planning

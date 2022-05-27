@@ -9,6 +9,7 @@ from turns import turns
 import matplotlib.pyplot as plt
 import os
 import moviepy.editor as mp
+import time
 
 
 class MultiRobotPathPlanner(DARP):
@@ -16,93 +17,157 @@ class MultiRobotPathPlanner(DARP):
                  dynamic_cells: np.uint32, dict_darp_start: dict, seed, importance: bool, visualization,
                  image_export, video_export, export_file_name):
 
+        start_time = time.time()
+
+        self.darp_instance = DARP(np_bool_area, max_iter, cc_variation, random_level, dynamic_cells, dict_darp_start,
+                                  seed, importance, visualization, video_export, export_file_name)
         self.export_file_name = export_file_name
 
-        DARP.__init__(self, np_bool_area, max_iter, cc_variation, random_level, dynamic_cells, dict_darp_start, seed,
-                      importance, visualization, video_export, self.export_file_name)
+        # start dividing regions
+        measure_start = time.time()
+        self.darp_success, self.iterations = self.darp_instance.divideRegions()
+        measure_end = time.time()
+        print("Elapsed time divideRegions(): ", (measure_end - measure_start), "sec")
 
-        if not self.success:
+        if not self.darp_success:
             print("DARP did not manage to find a solution for the given configuration!")
-            sys.exit(3)
 
-        if image_export:
-            self.to_image()
+        else:
+            if image_export:
+                self.to_image()
 
-        if video_export:
-            self.to_video()
+            if video_export:
+                self.to_video()
 
-        mode_to_drone_turns = dict()
+            # Iterate for 4 different ways to join edges in MST
+            self.mode_to_drone_turns = []
+            AllRealPaths_dict = {}
+            subCellsAssignment_dict = {}
+            for mode in range(4):
+                MSTs = self.calculateMSTs(self.darp_instance.BinaryRobotRegions, len(self.darp_instance.init_robot_pos),
+                                          self.darp_instance.rows, self.darp_instance.cols, mode)
+                AllRealPaths = []
+                for r in range(len(self.darp_instance.init_robot_pos)):
+                    ct = CalculateTrajectories(self.darp_instance.rows, self.darp_instance.cols, MSTs[r])
+                    ct.initializeGraph(
+                        self.CalcRealBinaryReg(self.darp_instance.BinaryRobotRegions[r], self.darp_instance.rows,
+                                               self.darp_instance.cols), True)
+                    ct.RemoveTheAppropriateEdges()
+                    ct.CalculatePathsSequence(
+                        4 * self.darp_instance.init_robot_pos[r][0] * self.darp_instance.cols + 2 *
+                        self.darp_instance.init_robot_pos[r][1])
+                    AllRealPaths.append(ct.PathSequence)
 
-        for mode in range(4):
-            MSTs = self.calculateMSTs(self.BinaryRobotRegions, len(self.init_robot_pos), self.rows, self.cols, mode)
-            AllRealPaths = []
-            for idx, robot in enumerate(self.init_robot_pos):
-                ct = CalculateTrajectories(self.rows, self.cols, MSTs[idx])
-                ct.initializeGraph(self.CalcRealBinaryReg(self.BinaryRobotRegions[idx], self.rows, self.cols), True)
-                ct.RemoveTheAppropriateEdges()
-                ct.CalculatePathsSequence(4 * robot[0] * self.cols + 2 * robot[1])
-                AllRealPaths.append(ct.PathSequence)
+                self.TypesOfLines = np.zeros((self.darp_instance.rows * 2, self.darp_instance.cols * 2, 2))
+                for r in range(len(self.darp_instance.init_robot_pos)):
+                    flag = False
+                    for connection in AllRealPaths[r]:
+                        if flag:
+                            if self.TypesOfLines[connection[0]][connection[1]][0] == 0:
+                                indxadd1 = 0
+                            else:
+                                indxadd1 = 1
 
-            TypesOfLines = np.zeros((self.rows * 2, self.cols * 2, 2))
-            for idx, robot in enumerate(self.init_robot_pos):
-                flag = False
-                for connection in AllRealPaths[idx]:
-                    if flag:
-                        if TypesOfLines[connection[0]][connection[1]][0] == 0:
-                            indxadd1 = 0
+                            if self.TypesOfLines[connection[2]][connection[3]][0] == 0 and flag:
+                                indxadd2 = 0
+                            else:
+                                indxadd2 = 1
                         else:
-                            indxadd1 = 1
+                            if not (self.TypesOfLines[connection[0]][connection[1]][0] == 0):
+                                indxadd1 = 0
+                            else:
+                                indxadd1 = 1
+                            if not (self.TypesOfLines[connection[2]][connection[3]][0] == 0 and flag):
+                                indxadd2 = 0
+                            else:
+                                indxadd2 = 1
 
-                        if TypesOfLines[connection[2]][connection[3]][0] == 0 and flag:
-                            indxadd2 = 0
+                        flag = True
+                        if connection[0] == connection[2]:
+                            if connection[1] > connection[3]:
+                                self.TypesOfLines[connection[0]][connection[1]][indxadd1] = 2
+                                self.TypesOfLines[connection[2]][connection[3]][indxadd2] = 3
+                            else:
+                                self.TypesOfLines[connection[0]][connection[1]][indxadd1] = 3
+                                self.TypesOfLines[connection[2]][connection[3]][indxadd2] = 2
+
                         else:
-                            indxadd2 = 1
-                    else:
-                        if not (TypesOfLines[connection[0]][connection[1]][0] == 0):
-                            indxadd1 = 0
-                        else:
-                            indxadd1 = 1
-                        if not (TypesOfLines[connection[2]][connection[3]][0] == 0 and flag):
-                            indxadd2 = 0
-                        else:
-                            indxadd2 = 1
+                            if connection[0] > connection[2]:
+                                self.TypesOfLines[connection[0]][connection[1]][indxadd1] = 1
+                                self.TypesOfLines[connection[2]][connection[3]][indxadd2] = 4
+                            else:
+                                self.TypesOfLines[connection[0]][connection[1]][indxadd1] = 4
+                                self.TypesOfLines[connection[2]][connection[3]][indxadd2] = 1
 
-                    flag = True
-                    if connection[0] == connection[2]:
-                        if connection[1] > connection[3]:
-                            TypesOfLines[connection[0]][connection[1]][indxadd1] = 2
-                            TypesOfLines[connection[2]][connection[3]][indxadd2] = 3
-                        else:
-                            TypesOfLines[connection[0]][connection[1]][indxadd1] = 3
-                            TypesOfLines[connection[2]][connection[3]][indxadd2] = 2
+                subCellsAssignment = np.zeros((2 * self.darp_instance.rows, 2 * self.darp_instance.cols))
+                for i in range(self.darp_instance.rows):
+                    for j in range(self.darp_instance.cols):
+                        subCellsAssignment[2 * i][2 * j] = self.darp_instance.A[i][j]
+                        subCellsAssignment[2 * i + 1][2 * j] = self.darp_instance.A[i][j]
+                        subCellsAssignment[2 * i][2 * j + 1] = self.darp_instance.A[i][j]
+                        subCellsAssignment[2 * i + 1][2 * j + 1] = self.darp_instance.A[i][j]
 
-                    else:
-                        if (connection[0] > connection[2]):
-                            TypesOfLines[connection[0]][connection[1]][indxadd1] = 1
-                            TypesOfLines[connection[2]][connection[3]][indxadd2] = 4
-                        else:
-                            TypesOfLines[connection[0]][connection[1]][indxadd1] = 4
-                            TypesOfLines[connection[2]][connection[3]][indxadd2] = 1
+                drone_turns = turns(AllRealPaths)
+                drone_turns.count_turns()
+                drone_turns.find_avg_and_std()
+                self.mode_to_drone_turns.append(drone_turns)
 
-            subCellsAssignment = np.zeros((2 * self.rows, 2 * self.cols))
-            for i in range(self.rows):
-                for j in range(self.cols):
-                    subCellsAssignment[2 * i][2 * j] = self.A[i][j]
-                    subCellsAssignment[2 * i + 1][2 * j] = self.A[i][j]
-                    subCellsAssignment[2 * i][2 * j + 1] = self.A[i][j]
-                    subCellsAssignment[2 * i + 1][2 * j + 1] = self.A[i][j]
+                AllRealPaths_dict[mode] = AllRealPaths
+                subCellsAssignment_dict[mode] = subCellsAssignment
 
-            drone_turns = turns(AllRealPaths)
-            drone_turns.count_turns()
-            mode_to_drone_turns[mode] = drone_turns
+            # Find mode with the smaller number of turns
+            averge_turns = [x.avg for x in self.mode_to_drone_turns]
+            self.min_mode = averge_turns.index(min(averge_turns))
 
-            if self.visualization:
-                image = visualize_paths(AllRealPaths, subCellsAssignment, len(self.init_robot_pos), self.color)
-                image.visualize_paths(mode)
+            # Retrieve number of cells per robot for the configuration with the smaller number of turns
+            min_mode_num_paths = [len(x) for x in AllRealPaths_dict[self.min_mode]]
+            min_mode_returnPaths = AllRealPaths_dict[self.min_mode]
 
-        print("\nResults:\n")
-        for mode, val in mode_to_drone_turns.items():
-            print(mode, val)
+            # Uncomment if you want to visualize all available modes
+
+            # if self.darp_instance.visualization:
+            #     for mode in range(4):
+            #         image = visualize_paths(AllRealPaths_dict[mode], subCellsAssignment_dict[mode],
+            #                                 self.darp_instance.droneNo, self.darp_instance.color)
+            #         image.visualize_paths(mode)
+            #     print("Best Mode:", self.min_mode)
+
+            # Combine all modes to get one mode with the least available turns for each drone
+            combined_modes_paths = []
+            combined_modes_turns = []
+
+            for r in range(len(self.darp_instance.init_robot_pos)):
+                min_turns = sys.maxsize
+                temp_path = []
+                for mode in range(4):
+                    if self.mode_to_drone_turns[mode].turns[r] < min_turns:
+                        temp_path = self.mode_to_drone_turns[mode].paths[r]
+                        min_turns = self.mode_to_drone_turns[mode].turns[r]
+                combined_modes_paths.append(temp_path)
+                combined_modes_turns.append(min_turns)
+
+            self.best_case = turns(combined_modes_paths)
+            self.best_case.turns = combined_modes_turns
+            self.best_case.find_avg_and_std()
+
+            # Retrieve number of cells per robot for the best case configuration
+            best_case_num_paths = [len(x) for x in self.best_case.paths]
+            best_case_returnPaths = self.best_case.paths
+
+            # visualize best case
+            if self.darp_instance.visualization:
+                image = visualize_paths(self.best_case.paths, subCellsAssignment_dict[self.min_mode],
+                                        len(self.darp_instance.init_robot_pos), self.darp_instance.color)
+                image.visualize_paths("Combined Modes")
+
+            self.execution_time = time.time() - start_time
+
+            print(f'\nResults:')
+            print(f'Number of cells per robot: {best_case_num_paths}')
+            print(f'Minimum number of cells in robots paths: {min(best_case_num_paths)}')
+            print(f'Maximum number of cells in robots paths: {max(best_case_num_paths)}')
+            print(f'Average number of cells in robots paths: {np.mean(np.array(best_case_num_paths))}')
+            print(f'\nTurns Analysis: {self.best_case}')
 
     def CalcRealBinaryReg(self, BinaryRobotRegion, rows, cols):
         temp = np.zeros((2 * rows, 2 * cols))
@@ -119,9 +184,9 @@ class MultiRobotPathPlanner(DARP):
 
     def calculateMSTs(self, BinaryRobotRegions, droneNo, rows, cols, mode):
         MSTs = []
-        for idx, robot in enumerate(self.init_robot_pos):
+        for r in range(droneNo):
             k = Kruskal(rows, cols)
-            k.initializeGraph(self.BinaryRobotRegions[idx, :, :], True, mode)
+            k.initializeGraph(BinaryRobotRegions[r, :, :], True, mode)
             k.performKruskal()
             MSTs.append(k.mst)
         return MSTs
@@ -130,7 +195,7 @@ class MultiRobotPathPlanner(DARP):
         file_path = Path('result_export', self.export_file_name + ".jpg")
         if not file_path.parent.exists():
             os.makedirs(file_path.parent)
-        plt.imsave(file_path, self.A, dpi=100)
+        plt.imsave(file_path, self.darp_instance.A, dpi=100)
         print("Exported image of final assignment matrix")
 
     def to_video(self):

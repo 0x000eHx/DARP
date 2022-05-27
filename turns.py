@@ -6,6 +6,8 @@ class turns:
         """
         paths: List of lists of moves per drone
         """
+        self.std = None
+        self.avg = None
         self.paths = paths
         self.turns = []
 
@@ -19,6 +21,7 @@ class turns:
     def count_turns(self):
         for path in self.paths:
             num_turns = -1
+            current_move = ""
             last_move = ""
             for move in path:
                 if move[0] == move[2]:
@@ -32,6 +35,6 @@ class turns:
                 last_move = current_move
             self.turns.append(num_turns)
 
+    def find_avg_and_std(self):
         self.avg = np.average(self.turns)
         self.std = np.std(self.turns)
-
