@@ -10,6 +10,10 @@ import queue
 from shapely.geometry import Point, box, Polygon, MultiPolygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
+from shapely import speedups
+
+if speedups.available:
+    speedups.enable()
 
 
 def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: float):
@@ -39,10 +43,10 @@ def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: floa
 def which_row_cells_within_area_boundaries(area, r, tile_height, c, tile_width, list_union_geo_coll=None) -> list:
     row_list_of_Polygons = []
 
-    for idx, x0 in enumerate(c):
-        x1 = x0 + tile_width
-        y1 = r + tile_height
-        Box_Polygon = box(x0, r, x1, y1)
+    for idx, c0 in enumerate(c):
+        c1 = c0 + tile_width
+        y1 = r - tile_height
+        Box_Polygon = box(c0, r, c1, y1)
         if Box_Polygon.within(area):
             am_i_a_good_polygon = True
             if list_union_geo_coll is not None:
@@ -68,18 +72,18 @@ def worker(input_queue, output_queue):
 
 
 def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, latitude_offset)
-                                       square_size_long_lat: dict,
+                                       dict_tile_edge_lengths: dict,
                                        selected_area,
                                        list_known_geo_coll_of_single_polys: list):
-    print("Searching for a grid!")
+    print("Searching for a grid with offset", str(offset))
     xmin, ymin, xmax, ymax = selected_area.bounds
 
     # offset tuple (long, lat)
-    rows = np.arange(ymin + offset[1], ymax + offset[1] + square_size_long_lat['tile_height'],
-                     square_size_long_lat['tile_height'])
+    rows = np.arange(ymin + offset[1], ymax + offset[1] + dict_tile_edge_lengths['tile_height'],
+                     dict_tile_edge_lengths['tile_height'])
     rows = np.flip(rows)  # scan from top to bottom
-    columns = np.arange(xmin + offset[0], xmax + offset[0] + square_size_long_lat['tile_width'],
-                        square_size_long_lat['tile_width'])  # scan from left to right
+    columns = np.arange(xmin + offset[0], xmax + offset[0] + dict_tile_edge_lengths['tile_width'],
+                        dict_tile_edge_lengths['tile_width'])  # scan from left to right
 
     # Create queues for task input and result output
     task_queue = Queue()
@@ -96,14 +100,14 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
 
         for idx, row in enumerate(rows):
             one_task = [idx, which_row_cells_within_area_boundaries,
-                        (selected_area, row, square_size_long_lat['tile_height'], columns,
-                         square_size_long_lat['tile_width'], list_valid_union_geo_colls)]
+                        (selected_area, row, dict_tile_edge_lengths['tile_height'], columns,
+                         dict_tile_edge_lengths['tile_width'], list_valid_union_geo_colls)]
             task_queue.put(one_task)
     else:
         for idx, row in enumerate(rows):
             one_task = [idx, which_row_cells_within_area_boundaries,
-                        (selected_area, row, square_size_long_lat['tile_height'], columns,
-                         square_size_long_lat['tile_width'])]
+                        (selected_area, row, dict_tile_edge_lengths['tile_height'], columns,
+                         dict_tile_edge_lengths['tile_width'])]
             task_queue.put(one_task)
 
     # Start worker processes
@@ -117,12 +121,13 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
                 list_Polygons_selected_area.extend(list_row_Polygons[1])  # extend and not append to unbox received list
         except queue.Empty as e:
             print(e)
-        except queue.Full as e:
-            print(e)
 
     # Tell child processes to stop
     for i in range(num_of_processes):
         task_queue.put('STOP')
+
+    task_queue.close()
+    done_queue.close()
 
     return MultiPolygon(list_Polygons_selected_area)
 

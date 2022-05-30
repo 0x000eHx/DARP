@@ -10,6 +10,8 @@ from setting_helpers import load_yaml_config_file
 from MultiRobotPathPlanner import MultiRobotPathPlanner
 import folium
 import numpy as np
+from shapely.ops import unary_union
+from shapely.validation import make_valid
 
 
 def generate_file_name(filename: str):
@@ -39,7 +41,6 @@ if __name__ == '__main__':
 
     # draw loaded map in browser and save
     # fol_map = grid_gdf.explore('covered_area', cmap='Spectral')  # YlGn,jet, PuBu, legend=True, scheme='quantiles'
-
     # for sp in settings['real_start_points']:
     #     folium.Marker([sp[1], sp[0]], popup="<i>Startpoint</i>").add_to(fol_map)
     # fol_map.save(f'htmls/{last_file_no_suffix}.html')
@@ -52,6 +53,7 @@ if __name__ == '__main__':
         different_area_sizes = grid_gdf.covered_area.unique()
         max_val = max(different_area_sizes)
         biggest_area_series = grid_gdf.loc[grid_gdf['covered_area'] == max_val]
+
         dict_tile_data = {"tile_width": biggest_area_series.tile_width.values[0],
                           "tile_height": biggest_area_series.tile_height.values[0]}
         dict_offset = {'offset_longitude': biggest_area_series.offset_longitude.values[0],
@@ -69,8 +71,18 @@ if __name__ == '__main__':
 
         for multipoly in biggest_area_series.geometry.to_list():
 
+            #######################################
+            # bla_gdf = gpd.GeoDataFrame(geometry=[make_valid(unary_union(multipoly))], crs=4326).set_geometry('geometry')
+            # biggest_map = bla_gdf.explore(cmap='Spectral')
+            # for sp in settings['real_start_points']:
+            #     folium.Marker([sp[1], sp[0]], popup="<i>Startpoint</i>").add_to(biggest_map)
+            # biggest_map.save(f'htmls/biggest_multipoly_second.html')
+            # path = 'file:///' + os.getcwd() + '/htmls/biggest_multipoly_second.html'
+            # webbrowser.open(path)
+            ########################################
+
             # post gridding numpy contour bool array generation
-            np_bool_array, gdf_numpy_positions = generate_numpy_contour_array(multipoly, dict_tile_data, dict_offset)
+            np_bool_array, gdf_numpy_positions = generate_numpy_contour_array(multipoly, dict_tile_data)
             relevant_tiles_count = np.count_nonzero(np_bool_array) - len(list_start_point_coords)
 
             # TODO: search for start points within given area array
@@ -107,8 +119,8 @@ if __name__ == '__main__':
 
                 for sp in settings['real_start_points']:
                     folium.Marker([sp[1], sp[0]], popup="<i>Startpoint</i>").add_to(fol_map)
-                fol_map.save(f'htmls/biggest_tiles.html')
-                path = 'file:///' + os.getcwd() + '/htmls/biggest_tiles.html'
+                fol_map.save(f'htmls/subcells_with_paths.html')
+                path = 'file:///' + os.getcwd() + '/htmls/subcells_with_paths.html'
                 webbrowser.open(path)
                 pass
 
