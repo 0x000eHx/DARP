@@ -20,6 +20,8 @@ if __name__ == '__main__':
 
     if check_edge_length_polygon_threshold(settings['grid_edge_length_meter'], settings['polygon_threshold']):
 
+        measure_start = time.time()
+
         area_polygon = get_biggest_area_polygon(settings['geojson_file_name'])
 
         # find biggest grid of highest value in grid_edge_length_meter
@@ -28,9 +30,12 @@ if __name__ == '__main__':
         if not grid_gdf.empty:
             # save best results
             file_name = generate_file_name(settings['geojson_file_name'])
-            grid_gdf.to_file(filename=f'./geodataframes/{file_name}.geojson', driver="GeoJSON")
+            grid_gdf.to_file(filename=f'./geodataframes/{file_name}_grid.geojson', driver="GeoJSON")
             print("Successfully finished grid generation and saved geometry to file!\n",
-                  f'./geodataframes/{file_name}.geojson')
+                  f'./geodataframes/{file_name}_grid.geojson')
+
+        measure_end = time.time()
+        print("Elapsed time grid generation: ", (measure_end - measure_start), "sec")
 
     else:
         print("check_edge_length_polygon_threshold() or check_real_start_points() failed!")
