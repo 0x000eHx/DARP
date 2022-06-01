@@ -1,6 +1,7 @@
 from pathlib import Path
 import uuid
 import pandas
+import psutil
 from tqdm.auto import tqdm
 import geopandas as gpd
 import numpy as np
@@ -89,7 +90,7 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
     task_queue = Queue()
     done_queue = Queue()
 
-    num_of_processes = cpu_count() - 1
+    num_of_processes = psutil.cpu_count(logical=False)  # cpu_count() - 1
     list_Polygons_selected_area = []
 
     # create tasks and push them into queue
@@ -287,7 +288,7 @@ def keep_only_relevant_geo_coll_of_single_polygon_geo_coll(coll_single_polyons, 
     # Create queues for task input and result output
     task_queue = Queue()
     done_queue = Queue()
-    num_of_processes = cpu_count() - 1
+    num_of_processes = psutil.cpu_count(logical=False)  # cpu_count() - 1
 
     # after relevancy check for grouped polygons go for single polygons inside Group of Polys
     list_known_geo_coll_of_single_polys = []
