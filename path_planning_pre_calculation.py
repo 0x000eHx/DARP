@@ -1,9 +1,11 @@
-# import time
+import time
+import copy
+import psutil
 import geopandas as gpd
 import numpy as np
 import pandas
 from tqdm.auto import tqdm
-from multiprocessing import Process, Queue, cpu_count
+from multiprocessing import Process, Queue
 import queue
 from shapely.geometry import Polygon, MultiPolygon, LineString, box, MultiLineString
 from shapely.ops import unary_union
@@ -25,22 +27,23 @@ def get_start_points_from_coords(list_start_point_coords: list, numpy_bool_array
     list_start_points = []
 
 
-def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np.ndarray, paths):
+def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np.ndarray, paths, hash_string: str):
+    print("Start dividing every polygon from grid generation into 4 subcells for usage in STC.")
     task_queue = Queue()
     done_queue = Queue()
 
-    num_of_processes = cpu_count() - 1
+    num_of_processes = 2  # psutil.cpu_count(logical=False)  # only physical available core count for this task
 
-    # get big polygons from input_gdf and divide them into 4 parts for STC path planning usage
+    # get big polygons from input_gdf and divide them into 4 parts for STC path planning
     # keep the old numpy_array cell positions alive in new subcells
-    polygons_divided_into_subsells_geoseries_list = []
+    list_subcells_dicts = []
     task_counter = 0
     for idx, serie in enumerate(input_gdf.itertuples()):
         task_counter += 1
-        column_idx = serie.column_idx
+        column_idx = serie.column_idx  # directly use hashable entries from input_gdf
         row_idx = serie.row_idx
         drone = assignment_matrix[row_idx, column_idx]
-        one_task = [idx, divide_polygon, (row_idx, column_idx, serie.geometry, drone)]
+        one_task = [idx, divide_polygon, (row_idx, column_idx, serie.geometry, drone, hash_string)]
         task_queue.put(one_task)
 
     # Start worker processes
@@ -49,8 +52,8 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
 
     for _ in tqdm(range(task_counter)):
         try:
-            ix, geoseries = done_queue.get()
-            polygons_divided_into_subsells_geoseries_list.extend(geoseries)
+            ix, list_of_dicts = done_queue.get()
+            list_subcells_dicts.extend(list_of_dicts)
 
         except queue.Empty as e:
             print(e)
@@ -64,40 +67,51 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
     task_queue.close()
     done_queue.close()
 
-    gdf_subcells = gpd.GeoDataFrame(polygons_divided_into_subsells_geoseries_list, crs=4326).set_geometry('geometry')
-
-    # get path out of lines, one by one and keep the assigned_drone for the geodataframe
+    print("Start going through subcells and keep their relative position from DARP numpy array.",
+          "Creating LineStrings from subcell centroids.")
+    measure_start = time.time()
+    # create path from lines (centroid for centroid) and keep the assigned_drone for the geodataframe
     task_queue = Queue()
     done_queue = Queue()
+    process_count = 1  # psutil.cpu_count(logical=False)  # only physical available core count for this task
 
     list_geoseries = []
     task_counter = 0
     for ix_drone, drone in enumerate(paths):
         for line_tuples in drone:
-            task_counter += 1
-            one_task = [ix_drone, generate_linestring_geoseries, (gdf_subcells, line_tuples, ix_drone)]
+            one_task = [task_counter, generate_linestring_geoseries, (line_tuples, ix_drone, hash_string)]
             task_queue.put(one_task)
+            task_counter += 1
 
     # Start worker processes
-    for i in range(num_of_processes):
-        Process(target=worker, args=(task_queue, done_queue)).start()
+    list_of_deepcopys = [list_subcells_dicts]
+    for i in range(process_count - 1):
+        list_of_deepcopys.append(copy.deepcopy(list_subcells_dicts))
+
+    for i in range(process_count):
+        # using search worker generates a lot of memory usage, cause of copys, so increase value with care
+        Process(target=search_worker, args=(task_queue, done_queue, list_of_deepcopys[i])).start()
 
     for _ in tqdm(range(task_counter)):
         try:
-            i, geoseries = done_queue.get()
+            idx, geoseries = done_queue.get()
             if not geoseries.empty:
-                list_geoseries.append(geoseries)  # append, cause no list: new geoseries is just one line and assigned drone
+                list_geoseries.append(geoseries)
+                # append, not extend: new geoseries is just one line and assigned drone
 
         except queue.Empty as e:
             print(e)
 
     # Tell child processes to stop
-    for i in range(num_of_processes):
+    for i in range(process_count):
         task_queue.put('STOP')
 
     task_queue.close()
     done_queue.close()
+    measure_end = time.time()
+    print("Measured time LineString path generation: ", (measure_end - measure_start), " sec")
 
+    gdf_subcells = gpd.GeoDataFrame(list_subcells_dicts, crs=4326).set_geometry('geometry')
     gdf_trajectory_paths = gpd.GeoDataFrame(list_geoseries, crs=4326).set_geometry('geometry')
 
     gdf_collection = gpd.GeoDataFrame(pandas.concat([gdf_subcells, gdf_trajectory_paths], axis=0, ignore_index=True),
@@ -106,25 +120,31 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
     return gdf_collection
 
 
-def generate_linestring_geoseries(gdf, line_tuples, assigned_drone):
+def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_drone, hash_string):
     # p1 row index, p1 column index, p2 row index, p2 column index = line_tuples
     p1_r_i, p1_c_i, p2_r_i, p2_c_i = line_tuples
 
+    p1 = next((item['geometry'] for item in list_of_subcells_dicts if
+               (item["column_idx"] == p1_c_i and item["row_idx"] == p1_r_i)), None)
+    p2 = next((item['geometry'] for item in list_of_subcells_dicts if
+               (item["column_idx"] == p2_c_i and item["row_idx"] == p2_r_i)), None)
+
     # query as tiny bit (1 or 2 ms) faster than
     # gdf_trajectory[gdf_trajectory['np_x'] == np1x][gdf_trajectory['np_y'] == np1y].reset_index()
-    p1 = gdf.query(f'column_idx == {p1_c_i} and row_idx == {p1_r_i}')
-    p2 = gdf.query(f'column_idx == {p2_c_i} and row_idx == {p2_r_i}')
+    # p1 = gdf.query(f'column_idx == {p1_c_i} and row_idx == {p1_r_i}')
+    # p2 = gdf.query(f'column_idx == {p2_c_i} and row_idx == {p2_r_i}')
 
-    if not p1.empty and not p2.empty:
-        point1 = p1.reset_index().geometry.centroid[0]
-        point2 = p2.reset_index().geometry.centroid[0]
+    if p1 is not None and p2 is not None:
+        # point1 = p1.reset_index().geometry.centroid[0]
+        # point2 = p2.reset_index().geometry.centroid[0]
 
-        data = {'row_idx': np.nan,
+        data = {'hash': hash_string,
+                'row_idx': np.nan,
                 'column_idx': np.nan,
                 'assigned_drone': assigned_drone,
                 'poly': False,
                 'line': True,
-                'geometry': LineString([point1, point2])}
+                'geometry': LineString([p1.centroid, p2.centroid])}
         geoseries = gpd.GeoSeries(data, crs=4326)
     else:
         geoseries = gpd.GeoSeries()
@@ -132,38 +152,42 @@ def generate_linestring_geoseries(gdf, line_tuples, assigned_drone):
     return geoseries
 
 
-def divide_polygon(row_idx, column_idx, poly: Polygon, assigned_drone):
+def divide_polygon(row_idx, column_idx, poly: Polygon, assigned_drone, hash_string):
     minx, miny, maxx, maxy = poly.bounds
 
     l_x = (maxx - minx) / 2
     l_y = (maxy - miny) / 2
 
-    data = [{'row_idx': row_idx * 2,
+    data = [{'hash': hash_string,
+             'row_idx': row_idx * 2,
              'column_idx': column_idx * 2,
              'assigned_drone': assigned_drone,
              'poly': True,
              'line': False,
              'geometry': box(minx, miny + l_y, maxx - l_x, maxy)},
-            {'row_idx': row_idx * 2,
+            {'hash': hash_string,
+             'row_idx': row_idx * 2,
              'column_idx': column_idx * 2 + 1,
              'assigned_drone': assigned_drone,
              'poly': True,
              'line': False,
              'geometry': box(minx + l_x, miny + l_y, maxx, maxy)},
-            {'row_idx': row_idx * 2 + 1,
+            {'hash': hash_string,
+             'row_idx': row_idx * 2 + 1,
              'column_idx': column_idx * 2,
              'assigned_drone': assigned_drone,
              'poly': True,
              'line': False,
              'geometry': box(minx, miny, maxx - l_x, maxy - l_y)},
-            {'row_idx': row_idx * 2 + 1,
+            {'hash': hash_string,
+             'row_idx': row_idx * 2 + 1,
              'column_idx': column_idx * 2 + 1,
              'assigned_drone': assigned_drone,
              'poly': True,
              'line': False,
              'geometry': box(minx + l_x, miny, maxx, maxy - l_y)}]
 
-    return gpd.GeoSeries(data, crs=4326)
+    return data
 
 
 def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height):
@@ -171,9 +195,11 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
     union_area = make_valid(unary_union(multipoly))
     minx, miny, maxx, maxy = union_area.bounds
 
-    columns_range = np.arange(minx, maxx + dict_tile_width_height['tile_width'], dict_tile_width_height['tile_width'])  # scan from left to right
+    # scan columns from left to right
+    columns_range = np.arange(minx, maxx + dict_tile_width_height['tile_width'], dict_tile_width_height['tile_width'])
     rows_range = np.arange(miny, maxy + dict_tile_width_height['tile_height'], dict_tile_width_height['tile_height'])
-    rows_range = np.flip(rows_range)  # scan from top to bottom
+    # scan rows from top to bottom
+    rows_range = np.flip(rows_range)
     np_bool_grid = np.full(shape=(rows_range.shape[0], columns_range.shape[0]), fill_value=False, dtype=bool)
 
     list_numpy_contour_positions_geoseries = []
@@ -182,7 +208,7 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
     task_queue = Queue()
     done_queue = Queue()
 
-    num_of_processes = cpu_count() - 1
+    num_of_processes = psutil.cpu_count(logical=False)  # only physical available core count for this task
     multipoly_list = list(multipoly.geoms)
     # create tasks and push them into queue
     for idx, poly in enumerate(multipoly_list):
@@ -264,4 +290,14 @@ def worker(input_queue, output_queue):
     """
     for idx, func, args in iter(input_queue.get, 'STOP'):
         result = func(*args)
+        output_queue.put([idx, result])
+
+
+def search_worker(input_queue, output_queue, list_too_search):
+    """
+    Necessary worker for python multiprocessing
+    Has an Index, if needed...
+    """
+    for idx, func, args in iter(input_queue.get, 'STOP'):
+        result = func(list_too_search, *args)
         output_queue.put([idx, result])

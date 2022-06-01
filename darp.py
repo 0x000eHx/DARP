@@ -90,7 +90,7 @@ def seed(a):
     np.random.seed(a)
 
 
-@njit(fastmath=True)
+@njit(fastmath=True, cache=True)
 def assign(non_obs_pos: np.ndarray,
            Assignment_Matrix: np.ndarray,
            Metric_Matrix: np.ndarray,
@@ -498,147 +498,159 @@ class DARP:
 
     def divideRegions(self):
         print("divideRegions() Start:")
+        time_start = time.time()
         success = False
         criterionMatrix = np.zeros((self.rows, self.cols))
         absolut_iterations = 0  # absolute iterations number which were needed to find optimal result
 
         assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
 
-        # to reduce overall tile reassignment value over time in self.DesirableAssign:
-        # after assigning tiles as voronoi diagram that the lowest value of self.ArrayOfElements should match
-        # to the lowest entry in self.DesirableAssign... small optimization from the start but not necessary
-        print("Rearranging lowest value in DesirableAssign to match lowest value in ArrayOfElements!")
-        if self.DesirableAssign.max() > self.DesirableAssign.min():
-            arrayofelements_lowest_val_idx = self.ArrayOfElements.argmin()
-            desirableassign_lowest_val_idx = self.DesirableAssign.argmin()
+        # if self.init_robot_pos and self.DesirableAssign get reduced to only ONE drone, cause the array is to small
+        # or whatnot darp shouldn't start at all to reduce calculation overhead
 
-            if arrayofelements_lowest_val_idx != desirableassign_lowest_val_idx:
-                temp = self.DesirableAssign[desirableassign_lowest_val_idx]
-                self.DesirableAssign[desirableassign_lowest_val_idx] = self.DesirableAssign[
-                    arrayofelements_lowest_val_idx]
-                self.DesirableAssign[arrayofelements_lowest_val_idx] = temp
+        if not self.DesirableAssign.shape[0] > 1:
+            success = True
+            if self.video_export:
+                self.gif_writer.close()
+            print("Initial drone / startpoint count is only 1. Skip DARP.")
 
-        if self.video_export:
-            self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
+        else:
+            # to reduce overall tile reassignment value over time in self.DesirableAssign:
+            # after assigning tiles as voronoi diagram that the lowest value of self.ArrayOfElements should match
+            # to the lowest entry in self.DesirableAssign... small optimization from the start but not necessary
+            print("Rearranging lowest value in DesirableAssign to match lowest value in ArrayOfElements!")
+            if self.DesirableAssign.max() > self.DesirableAssign.min():
+                arrayofelements_lowest_val_idx = self.ArrayOfElements.argmin()
+                desirableassign_lowest_val_idx = self.DesirableAssign.argmin()
 
-        if self.visualization:
-            self.assignment_matrix_visualization.placeCells(self.A)
+                if arrayofelements_lowest_val_idx != desirableassign_lowest_val_idx:
+                    temp = self.DesirableAssign[desirableassign_lowest_val_idx]
+                    self.DesirableAssign[desirableassign_lowest_val_idx] = self.DesirableAssign[
+                        arrayofelements_lowest_val_idx]
+                    self.DesirableAssign[arrayofelements_lowest_val_idx] = temp
 
-        print("Desirable Assignments:", self.DesirableAssign, ", Tiles per Robot:", self.ArrayOfElements,
-              "\nTermination threshold: max", self.termThr, "tiles difference per robot to desirable value.")
+            if self.video_export:
+                self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
 
-        time_start = time.time()
-        while self.termThr <= self.Dynamic_Cells and not success:
-            downThres = (self.Notiles - self.termThr * (len(self.init_robot_pos) - 1)) / (
-                    self.Notiles * len(self.init_robot_pos))
-            upperThres = (self.Notiles + self.termThr) / (self.Notiles * len(self.init_robot_pos))
+            if self.visualization:
+                self.assignment_matrix_visualization.placeCells(self.A)
 
-            # main optimization loop
-            for _ in tqdm(range(self.MaxIter)):
+            print("Desirable Assignments:", self.DesirableAssign, ", Tiles per Robot:", self.ArrayOfElements,
+                  "\nTermination threshold: max", self.termThr, "tiles difference per robot to desirable value.")
 
-                # start performance analyse
-                # profiler = Profiler()
-                # profiler.start()
-                ###########################
+            while self.termThr <= self.Dynamic_Cells and not success:
+                downThres = (self.Notiles - self.termThr * (len(self.init_robot_pos) - 1)) / (
+                        self.Notiles * len(self.init_robot_pos))
+                upperThres = (self.Notiles + self.termThr) / (self.Notiles * len(self.init_robot_pos))
 
-                ConnectedMultiplierArrays = np.ones((len(self.init_robot_pos), self.rows, self.cols))
-                plainErrors = np.zeros((len(self.init_robot_pos)))
-                divFairError = np.zeros((len(self.init_robot_pos)))
+                # main optimization loop
+                for _ in tqdm(range(self.MaxIter)):
 
-                update_connectivity(self.connectivity, self.A, self.non_obstacle_positions)
-                for idx, robot in enumerate(self.init_robot_pos):
-                    ConnectedMultiplier = np.ones((self.rows, self.cols))
-                    self.ConnectedRobotRegions[idx] = True
-                    num_labels, labels_im = cv2.connectedComponents(self.connectivity[idx, :, :], connectivity=4)
-                    if num_labels > 2:
-                        self.ConnectedRobotRegions[idx] = False
-                        BinaryRobot, BinaryNonRobot = construct_binary_images(self.non_obstacle_positions, labels_im,
-                                                                              robot)
-                        ConnectedMultiplier = calc_connected_multiplier(self.non_obstacle_positions,
-                                                                        self.ConnectedMultiplier_variation,
-                                                                        NormalizedEuclideanDistanceBinary(True,
-                                                                                                          BinaryRobot),
-                                                                        NormalizedEuclideanDistanceBinary(False,
-                                                                                                          BinaryNonRobot))
-                    ConnectedMultiplierArrays[idx, :, :] = ConnectedMultiplier
-                    plainErrors[idx] = self.ArrayOfElements[idx] / (
-                            self.DesirableAssign[idx] * len(self.init_robot_pos))
-                    if plainErrors[idx] < downThres:
-                        divFairError[idx] = downThres - plainErrors[idx]
-                    elif plainErrors[idx] > upperThres:
-                        divFairError[idx] = upperThres - plainErrors[idx]
+                    # start performance analyse
+                    # profiler = Profiler()
+                    # profiler.start()
+                    ###########################
 
-                TotalNegPerc = 0
-                totalNegPlainErrors = 0
-                correctionMult = np.zeros(len(self.init_robot_pos))
+                    ConnectedMultiplierArrays = np.ones((len(self.init_robot_pos), self.rows, self.cols))
+                    plainErrors = np.zeros((len(self.init_robot_pos)))
+                    divFairError = np.zeros((len(self.init_robot_pos)))
 
-                for idx, robot in enumerate(self.init_robot_pos):
-                    if divFairError[idx] < 0:
-                        TotalNegPerc += np.absolute(divFairError[idx])
-                        totalNegPlainErrors += plainErrors[idx]
-                    correctionMult[idx] = 1
+                    update_connectivity(self.connectivity, self.A, self.non_obstacle_positions)
+                    for idx, robot in enumerate(self.init_robot_pos):
+                        ConnectedMultiplier = np.ones((self.rows, self.cols))
+                        self.ConnectedRobotRegions[idx] = True
+                        num_labels, labels_im = cv2.connectedComponents(self.connectivity[idx, :, :], connectivity=4)
+                        if num_labels > 2:
+                            self.ConnectedRobotRegions[idx] = False
+                            BinaryRobot, BinaryNonRobot = construct_binary_images(self.non_obstacle_positions, labels_im,
+                                                                                  robot)
+                            ConnectedMultiplier = calc_connected_multiplier(self.non_obstacle_positions,
+                                                                            self.ConnectedMultiplier_variation,
+                                                                            NormalizedEuclideanDistanceBinary(True,
+                                                                                                              BinaryRobot),
+                                                                            NormalizedEuclideanDistanceBinary(False,
+                                                                                                              BinaryNonRobot))
+                        ConnectedMultiplierArrays[idx, :, :] = ConnectedMultiplier
+                        plainErrors[idx] = self.ArrayOfElements[idx] / (
+                                self.DesirableAssign[idx] * len(self.init_robot_pos))
+                        if plainErrors[idx] < downThres:
+                            divFairError[idx] = downThres - plainErrors[idx]
+                        elif plainErrors[idx] > upperThres:
+                            divFairError[idx] = upperThres - plainErrors[idx]
 
-                # Restore Fairness among the different partitions
-                for idx, robot in enumerate(self.init_robot_pos):
-                    if totalNegPlainErrors != 0:
+                    TotalNegPerc = 0
+                    totalNegPlainErrors = 0
+                    correctionMult = np.zeros(len(self.init_robot_pos))
+
+                    for idx, robot in enumerate(self.init_robot_pos):
                         if divFairError[idx] < 0:
-                            correctionMult[idx] = 1 + (plainErrors[idx] / totalNegPlainErrors) * (TotalNegPerc / 2)
-                        else:
-                            correctionMult[idx] = 1 - (plainErrors[idx] / totalNegPlainErrors) * (TotalNegPerc / 2)
+                            TotalNegPerc += np.absolute(divFairError[idx])
+                            totalNegPlainErrors += plainErrors[idx]
+                        correctionMult[idx] = 1
 
-                        criterionMatrix = calculateCriterionMatrix(self.Importance,
-                                                                   self.TilesImportance[idx],
-                                                                   self.MinimumImportance[idx],
-                                                                   self.MaximumImportance[idx],
-                                                                   correctionMult[idx],
-                                                                   divFairError[idx] < 0)
+                    # Restore Fairness among the different partitions
+                    for idx, robot in enumerate(self.init_robot_pos):
+                        if totalNegPlainErrors != 0:
+                            if divFairError[idx] < 0:
+                                correctionMult[idx] = 1 + (plainErrors[idx] / totalNegPlainErrors) * (TotalNegPerc / 2)
+                            else:
+                                correctionMult[idx] = 1 - (plainErrors[idx] / totalNegPlainErrors) * (TotalNegPerc / 2)
 
-                    FinalUpdateOnMetricMatrix(
-                        self.non_obstacle_positions,
-                        criterionMatrix,
-                        self.MetricMatrix[idx],
-                        ConnectedMultiplierArrays[idx, :, :],
-                        self.randomLevel)
+                            criterionMatrix = calculateCriterionMatrix(self.Importance,
+                                                                       self.TilesImportance[idx],
+                                                                       self.MinimumImportance[idx],
+                                                                       self.MaximumImportance[idx],
+                                                                       correctionMult[idx],
+                                                                       divFairError[idx] < 0)
 
-                assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
+                        FinalUpdateOnMetricMatrix(
+                            self.non_obstacle_positions,
+                            criterionMatrix,
+                            self.MetricMatrix[idx],
+                            ConnectedMultiplierArrays[idx, :, :],
+                            self.randomLevel)
 
-                absolut_iterations += 1
-                if self.video_export:
-                    self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
+                    assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
 
-                if self.visualization:
-                    self.assignment_matrix_visualization.placeCells(self.A, iteration_number=absolut_iterations)
-                    # time.sleep(0.1)
-
-                if check_for_near_float64_overflow(self.MetricMatrix):
-                    self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.GridEnv_bool,
-                                                                self.MetricMatrix)
-                    print("\nMetricMatrix normalized")
-
-                if check_assignment_state(self.termThr, self.ConnectedRobotRegions,
-                                          self.DesirableAssign, self.ArrayOfElements):
-                    time_stop = time.time()
-                    success = True
+                    absolut_iterations += 1
                     if self.video_export:
-                        self.gif_writer.close()
-                    print("Found Final Assignment Matrix:",
-                          absolut_iterations, "Iterations in", (time_stop - time_start),
-                          "sec;", absolut_iterations / (time_stop - time_start), "iter/sec",
-                          "\nDesirable Assignments:", self.DesirableAssign, "\nTiles per Robot:", self.ArrayOfElements)
-                    break
+                        self.video_export_add_frame(absolut_iterations, self.ConnectedRobotRegions)
 
-                # End performance analyses
-                # profiler.stop()
-                # profiler.print(color=True)
-                # profiler.open_in_browser()
-                ##########################
+                    if self.visualization:
+                        self.assignment_matrix_visualization.placeCells(self.A, iteration_number=absolut_iterations)
+                        # time.sleep(0.1)
 
-            # next iteration of DARP with increased flexibility
-            if not success:
-                if self.MaxIter > 10000:
-                    self.MaxIter = int(self.MaxIter / 2)
-                self.termThr += 10
-                print("\nIncreasing termination threshold to", self.termThr, "\n")
+                    if check_for_near_float64_overflow(self.MetricMatrix):
+                        self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.GridEnv_bool,
+                                                                    self.MetricMatrix)
+                        print("\nMetricMatrix normalized")
+
+                    if check_assignment_state(self.termThr, self.ConnectedRobotRegions,
+                                              self.DesirableAssign, self.ArrayOfElements):
+                        time_stop = time.time()
+                        success = True
+                        if self.video_export:
+                            self.gif_writer.close()
+                        if (time_stop - time_start) > 0:
+                            print("Found Final Assignment Matrix:",
+                                  absolut_iterations, "Iterations in", (time_stop - time_start),
+                                  "sec;", absolut_iterations / (time_stop - time_start), "iter/sec",
+                                  "\nDesirable Assignments:", self.DesirableAssign, "\nTiles per Robot:",
+                                  self.ArrayOfElements)
+                        break
+
+                    # End performance analyses
+                    # profiler.stop()
+                    # profiler.print(color=True)
+                    # profiler.open_in_browser()
+                    ##########################
+
+                # next iteration of DARP with increased flexibility
+                if not success:
+                    if self.MaxIter > 10000:
+                        self.MaxIter = int(self.MaxIter / 2)
+                    self.termThr += 10
+                    print("\nIncreasing termination threshold to", self.termThr, "\n")
 
         getBinaryRobotRegions(self.BinaryRobotRegions, self.non_obstacle_positions, self.A)
         return success, absolut_iterations
