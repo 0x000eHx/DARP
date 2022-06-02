@@ -27,7 +27,7 @@ def get_start_points_from_coords(list_start_point_coords: list, numpy_bool_array
     list_start_points = []
 
 
-def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np.ndarray, paths, hash_string: str):
+def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np.ndarray, paths, tiles_group_identifier):
     print("Start dividing every polygon from grid generation into 4 subcells for usage in STC.")
     task_queue = Queue()
     done_queue = Queue()
@@ -42,8 +42,8 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
         task_counter += 1
         column_idx = serie.column_idx  # directly use hashable entries from input_gdf
         row_idx = serie.row_idx
-        drone = assignment_matrix[row_idx, column_idx]
-        one_task = [idx, divide_polygon, (row_idx, column_idx, serie.geometry, drone, hash_string)]
+        assigned_startpoint = assignment_matrix[row_idx, column_idx]
+        one_task = [idx, divide_polygon, (row_idx, column_idx, serie.geometry, assigned_startpoint, tiles_group_identifier)]
         task_queue.put(one_task)
 
     # Start worker processes
@@ -67,19 +67,19 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
     task_queue.close()
     done_queue.close()
 
-    print("Start going through subcells and keep their relative position from DARP numpy array.",
+    print("Start going through subcells and keep their relative position inside DARP numpy array.",
           "Creating LineStrings from subcell centroids.")
     measure_start = time.time()
-    # create path from lines (centroid for centroid) and keep the assigned_drone for the geodataframe
+    # create path from lines (centroid for centroid) and keep the assigned_startpoint for the geodataframe
     task_queue = Queue()
     done_queue = Queue()
     process_count = 1  # psutil.cpu_count(logical=False)  # only physical available core count for this task
 
     list_geoseries = []
     task_counter = 0
-    for ix_drone, drone in enumerate(paths):
-        for line_tuples in drone:
-            one_task = [task_counter, generate_linestring_geoseries, (line_tuples, ix_drone, hash_string)]
+    for ix_startpoint, segment in enumerate(paths):
+        for line_tuples in segment:
+            one_task = [task_counter, generate_linestring_geoseries, (line_tuples, ix_startpoint, tiles_group_identifier)]
             task_queue.put(one_task)
             task_counter += 1
 
@@ -97,7 +97,7 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
             idx, geoseries = done_queue.get()
             if not geoseries.empty:
                 list_geoseries.append(geoseries)
-                # append, not extend: new geoseries is just one line and assigned drone
+                # append, not extend: new geoseries is just one line and assigned start point
 
         except queue.Empty as e:
             print(e)
@@ -120,7 +120,7 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
     return gdf_collection
 
 
-def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_drone, hash_string):
+def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_startpoint, tiles_group_identifier):
     # p1 row index, p1 column index, p2 row index, p2 column index = line_tuples
     p1_r_i, p1_c_i, p2_r_i, p2_c_i = line_tuples
 
@@ -138,10 +138,10 @@ def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_
         # point1 = p1.reset_index().geometry.centroid[0]
         # point2 = p2.reset_index().geometry.centroid[0]
 
-        data = {'hash': hash_string,
+        data = {'tiles_group_identifier': tiles_group_identifier,
                 'row_idx': np.nan,
                 'column_idx': np.nan,
-                'assigned_drone': assigned_drone,
+                'assigned_startpoint': assigned_startpoint,
                 'poly': False,
                 'line': True,
                 'geometry': LineString([p1.centroid, p2.centroid])}
@@ -152,37 +152,37 @@ def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_
     return geoseries
 
 
-def divide_polygon(row_idx, column_idx, poly: Polygon, assigned_drone, hash_string):
+def divide_polygon(row_idx, column_idx, poly: Polygon, assigned_startpoint, tiles_group_identifier):
     minx, miny, maxx, maxy = poly.bounds
 
     l_x = (maxx - minx) / 2
     l_y = (maxy - miny) / 2
 
-    data = [{'hash': hash_string,
+    data = [{'tiles_group_identifier': tiles_group_identifier,
              'row_idx': row_idx * 2,
              'column_idx': column_idx * 2,
-             'assigned_drone': assigned_drone,
+             'assigned_startpoint': assigned_startpoint,
              'poly': True,
              'line': False,
              'geometry': box(minx, miny + l_y, maxx - l_x, maxy)},
-            {'hash': hash_string,
+            {'tiles_group_identifier': tiles_group_identifier,
              'row_idx': row_idx * 2,
              'column_idx': column_idx * 2 + 1,
-             'assigned_drone': assigned_drone,
+             'assigned_startpoint': assigned_startpoint,
              'poly': True,
              'line': False,
              'geometry': box(minx + l_x, miny + l_y, maxx, maxy)},
-            {'hash': hash_string,
+            {'tiles_group_identifier': tiles_group_identifier,
              'row_idx': row_idx * 2 + 1,
              'column_idx': column_idx * 2,
-             'assigned_drone': assigned_drone,
+             'assigned_startpoint': assigned_startpoint,
              'poly': True,
              'line': False,
              'geometry': box(minx, miny, maxx - l_x, maxy - l_y)},
-            {'hash': hash_string,
+            {'tiles_group_identifier': tiles_group_identifier,
              'row_idx': row_idx * 2 + 1,
              'column_idx': column_idx * 2 + 1,
-             'assigned_drone': assigned_drone,
+             'assigned_startpoint': assigned_startpoint,
              'poly': True,
              'line': False,
              'geometry': box(minx + l_x, miny, maxx, maxy - l_y)}]
@@ -208,7 +208,7 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
     task_queue = Queue()
     done_queue = Queue()
 
-    num_of_processes = psutil.cpu_count(logical=False)  # only physical available core count for this task
+    num_of_processes = 2  # psutil.cpu_count(logical=False)  # only physical available core count for this task
     multipoly_list = list(multipoly.geoms)
     # create tasks and push them into queue
     for idx, poly in enumerate(multipoly_list):
@@ -269,15 +269,14 @@ def check_poly_pos(rows_range, columns_range, y, x, tile_height, tile_width):
 def get_random_start_points_list(number_of_start_points: int, area_bool: np.ndarray):
     start_coordinates = set()  # if a set, then no duplicates, but unordered and unindexed
     rows, cols = area_bool.shape
+    available_cells = np.count_nonzero(area_bool)
 
     while True:
         random_row = np.random.randint(0, rows)
         random_col = np.random.randint(0, cols)
-
         if area_bool[random_row, random_col]:
             start_coordinates.add((random_row, random_col))
-
-        if len(start_coordinates) == number_of_start_points:
+        if len(start_coordinates) >= available_cells or number_of_start_points == len(start_coordinates):
             break
 
     return list(start_coordinates)  # back to list, because we need an index later
