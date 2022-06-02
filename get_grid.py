@@ -18,14 +18,14 @@ if __name__ == '__main__':
     write_yaml_config_file(settings_yaml_filepath)
     settings = load_yaml_config_file(settings_yaml_filepath)
 
-    if check_edge_length_polygon_threshold(settings['grid_edge_length_meter'], settings['polygon_threshold']):
+    if check_edge_length_polygon_threshold(settings['sensor_line_length_meter'], settings['polygon_threshold']):
 
         measure_start = time.time()
 
         area_polygon = get_biggest_area_polygon(settings['geojson_file_name'])
 
-        # find biggest grid of highest value in grid_edge_length_meter
-        grid_gdf = find_grid(area_polygon, settings['grid_edge_length_meter'], settings['polygon_threshold'])
+        # find biggest grid of highest value in sensor_line_length_meter
+        grid_gdf = find_grid(area_polygon, settings['sensor_line_length_meter'], settings['polygon_threshold'])
 
         if not grid_gdf.empty:
             # save best results

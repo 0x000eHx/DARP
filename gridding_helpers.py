@@ -90,7 +90,7 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
     task_queue = Queue()
     done_queue = Queue()
 
-    num_of_processes = psutil.cpu_count(logical=False)  # cpu_count() - 1
+    num_of_processes = 2  # psutil.cpu_count(logical=False)  # cpu_count() - 1
     list_Polygons_selected_area = []
 
     # create tasks and push them into queue
@@ -149,17 +149,18 @@ def check_real_start_points(geopandas_area_file, start_points):
     return True
 
 
-def check_edge_length_polygon_threshold(grid_edge_lengths, polys_threshold):
+def check_edge_length_polygon_threshold(list_sensor_line_lengths, polys_threshold):
     """
+    Check if count sensor lines lengths in list is equal given count of polygon thresholds.
 
-    :param grid_edge_lengths:
-    :param polys_threshold:
+    :param list_sensor_line_lengths: The list of one or more different sensor line lengths in meter.
+    :param polys_threshold: The list of minimum numbers of squares (in one group) inside the grid which will get dropped.
     :return:
     """
-    if not isinstance(grid_edge_lengths, list):
+    if not isinstance(list_sensor_line_lengths, list):
         # keep orientation intact
-        # grid_edge_lengths = sorted(grid_edge_lengths, reverse=True)  # from greatest to smallest value
-        print("Something went wrong with the grid_edge_lengths import. Expected list.")
+        # list_sensor_line_lengths = sorted(list_sensor_line_lengths, reverse=True)  # from greatest to smallest value
+        print("Something went wrong with the list_sensor_line_lengths import. Expected list.")
         return False
 
     if not isinstance(polys_threshold, list):
@@ -168,7 +169,7 @@ def check_edge_length_polygon_threshold(grid_edge_lengths, polys_threshold):
         print("Something went wrong with the polys_threshold import. Expected list.")
         return False
 
-    edge_length_array = np.array(grid_edge_lengths)
+    edge_length_array = np.array(list_sensor_line_lengths)
     poly_threshold_array = np.array(polys_threshold)
 
     if edge_length_array.shape != poly_threshold_array.shape:
@@ -186,15 +187,14 @@ def check_edge_length_polygon_threshold(grid_edge_lengths, polys_threshold):
 
         # are the edge lengths divider from another?
         if i > np.amin(edge_length_array) and not i % np.amin(edge_length_array) == 0:
-            print("Edge_length value", i, "doesn't match,"
-                                          "cause it is not the exponentiation of a half of the greatest value",
-                  str(np.amin(edge_length_array)), "\nThe tiles won't align!")
+            print("Edge_length value", i, "doesn't match, cause it is not the exponentiation of a half",
+                  "of the greatest value", str(np.amin(edge_length_array)), "\nThe tiles won't align!")
             return False
 
     # check if polygon_threshold list contains a negative value and replace it with a reasonable entry
     for poly_thresh in poly_threshold_array:
         if poly_thresh < 0:
-            print("The polygon_threshold entry", poly_thresh, "< 0 is invalid. Only positiv values. Abort!")
+            print("The polygon_threshold entry", poly_thresh, "< 0 is invalid. Only zero or positiv values allowed. Abort!")
             return False
 
     return True
@@ -331,12 +331,17 @@ def keep_relevent_poly_helper(coll_single_polyons, one_relevant_coll):
     return polygon_list
 
 
-def create_geodataframe_dict(best_offset, dict_square_edge_length_long_lat, list_known_geo_coll_of_single_polys):
-    gdf_dict = {'hash': [str(uuid.uuid4()) for _ in list_known_geo_coll_of_single_polys],
+def create_geodataframe_dict(best_offset,
+                             dict_square_edge_length_long_lat,
+                             grid_edge_length_meter,
+                             list_known_geo_coll_of_single_polys):
+
+    gdf_dict = {'tiles_group_identifier': [str(uuid.uuid4()) for _ in list_known_geo_coll_of_single_polys],
                 'offset_longitude': best_offset[0],
                 'offset_latitude': best_offset[1],
                 'tile_width': dict_square_edge_length_long_lat['tile_width'],
                 'tile_height': dict_square_edge_length_long_lat['tile_height'],
+                'sensor_line_length_meter': grid_edge_length_meter / 2,
                 'covered_area': [unary_union(x).area for x in list_known_geo_coll_of_single_polys],
                 'geometry': list_known_geo_coll_of_single_polys}
     return gdf_dict
@@ -344,6 +349,7 @@ def create_geodataframe_dict(best_offset, dict_square_edge_length_long_lat, list
 
 def find_tile_groups_of_given_edge_length(area_polygon,
                                           dict_square_edge_length_long_lat: dict,
+                                          grid_edge_length_meter,
                                           polygon_threshold,
                                           known_tiles_gdf: gpd.GeoDataFrame):
     # there is no know geometry data available
@@ -366,8 +372,9 @@ def find_tile_groups_of_given_edge_length(area_polygon,
             # make unary_union of all determined Polygon and compare the areas, the biggest area wins
             best_offset, geo_coll_single_polyons = max(list_biggest_grids,
                                                        key=lambda a: make_valid(unary_union(a[1])).area)
-            if len(geo_coll_single_polyons.geoms) > 1:
+            if len(geo_coll_single_polyons.geoms) > 0:
                 print(len(geo_coll_single_polyons.geoms), "Polygons found in given area!")
+                print("Best random offset chosen is", str(best_offset))
 
             # relevancy check of joined polygons group
             list_relevant_geo_colls = keep_only_relevant_geo_coll_of_single_polygon_geo_coll(
@@ -375,6 +382,7 @@ def find_tile_groups_of_given_edge_length(area_polygon,
 
             gdf_dict = create_geodataframe_dict(best_offset,
                                                 dict_square_edge_length_long_lat,
+                                                grid_edge_length_meter,
                                                 list_relevant_geo_colls)
 
             gdf_biggest_tile_size = gpd.GeoDataFrame(gdf_dict, crs=4326).set_geometry('geometry')
@@ -412,33 +420,38 @@ def find_tile_groups_of_given_edge_length(area_polygon,
             # generate GeoDataframe
             gdf_dict = create_geodataframe_dict(best_offset,
                                                 dict_square_edge_length_long_lat,
+                                                grid_edge_length_meter,
                                                 list_relevant_geo_colls)
             gdf = gpd.GeoDataFrame(gdf_dict, crs=4326).set_geometry('geometry')  # , crs=4326
             return gdf
 
 
-def find_grid(area_polygon, grid_edge_lengths: list, polygon_threshold: list):
+def find_grid(area_polygon, list_sensor_line_lengths: list, polygon_threshold: list):
 
     # generate tile width and height by calculating the biggest tile size to go for and divide it into the other tile sizes
     # hopefully clears out a mismatch in long/lat max and min values between biggest tile size and smallest
-    square_edges_long_lat = generate_square_edges_long_lat(grid_edge_lengths, area_polygon)
+
+    grid_square_edges_meter = [x * 2 for x in list_sensor_line_lengths]  # double values for STC tile construction
+
+    grid_square_edges_long_lat = generate_square_edges_long_lat(grid_square_edges_meter, area_polygon)
 
     gdf_collection = gpd.GeoDataFrame()  # collect all results in this geodataframe
 
-    grid_edge_lengths = np.flip(grid_edge_lengths)  # from greatest to smallest value, means settings flipped
+    grid_square_edges_meter = np.flip(grid_square_edges_meter)  # from greatest to smallest value, means settings flipped
     polygon_threshold = np.flip(polygon_threshold)  # keep threshold values relative to edge lengths intact
 
     # search starts at biggest tiles, the greatest edge length and relative polygon threshold
-    for idx, edge_length in enumerate(grid_edge_lengths):
+    for idx, edge_length_meter in enumerate(grid_square_edges_meter):
         gdf_one_tile_size = find_tile_groups_of_given_edge_length(area_polygon,
-                                                                  square_edges_long_lat[f'{edge_length}'],
+                                                                  grid_square_edges_long_lat[f'{edge_length_meter}'],
+                                                                  edge_length_meter,
                                                                   polygon_threshold[idx],
                                                                   gdf_collection)
         if gdf_one_tile_size.empty:
-            print("Didn't find a grid with", grid_edge_lengths[idx],
+            print("Didn't find a grid with", list_sensor_line_lengths[idx],
                   "square edge length!\nContinuing with smaller one...")
         else:
-            print(f'Found grid with tile edge length of {edge_length}m')
+            print(f'Found grid with tile edge length of {edge_length_meter / 2}m')
             gdf_collection = gpd.GeoDataFrame(pandas.concat([gdf_collection,
                                                              gdf_one_tile_size],
                                                             axis=0,
