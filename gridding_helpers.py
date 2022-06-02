@@ -41,7 +41,7 @@ def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: floa
     return abs(long_difference), abs(lat_difference)
 
 
-def which_row_cells_within_area_boundaries(area, r, tile_height, c, tile_width, list_union_geo_coll=None) -> list:
+def which_row_cells_within_area_boundaries(area, r, tile_height, c, tile_width, union_geo_coll=None) -> list:
     row_list_of_Polygons = []
 
     for idx, c0 in enumerate(c):
@@ -50,12 +50,11 @@ def which_row_cells_within_area_boundaries(area, r, tile_height, c, tile_width, 
         Box_Polygon = box(c0, r, c1, y1)
         if Box_Polygon.within(area):
             am_i_a_good_polygon = True
-            if list_union_geo_coll is not None:
-                for union_geo_coll in list_union_geo_coll:
-                    if Box_Polygon.within(union_geo_coll):
-                        am_i_a_good_polygon = False
-                        # if new_Polygon.overlaps(union_geo_coll):
-                        #     am_i_a_good_polygon = True
+            if union_geo_coll is not None:
+                if Box_Polygon.within(union_geo_coll):
+                    am_i_a_good_polygon = False
+                    # if new_Polygon.overlaps(union_geo_coll):
+                    #     am_i_a_good_polygon = True
             if am_i_a_good_polygon:
                 row_list_of_Polygons.append(Box_Polygon)
 
@@ -95,14 +94,17 @@ def processing_geometry_boundary_check(offset: tuple,  # (longitude_offset, lati
 
     # create tasks and push them into queue
     if len(list_known_geo_coll_of_single_polys) > 0:
-        list_valid_union_geo_colls = []
-        for geo_coll in list_known_geo_coll_of_single_polys:
-            list_valid_union_geo_colls.append(make_valid(unary_union(geo_coll)))
+        unpacked_multipoly = []
+        for multipoly in list_known_geo_coll_of_single_polys:
+            unpacked_multipoly.extend(list(multipoly.geoms))
+
+        multipoly_known_geo_collections = MultiPolygon(unpacked_multipoly)
+        valid_union_geo_coll = make_valid(unary_union(multipoly_known_geo_collections))
 
         for idx, row in enumerate(rows):
             one_task = [idx, which_row_cells_within_area_boundaries,
                         (selected_area, row, dict_tile_edge_lengths['tile_height'], columns,
-                         dict_tile_edge_lengths['tile_width'], list_valid_union_geo_colls)]
+                         dict_tile_edge_lengths['tile_width'], valid_union_geo_coll)]
             task_queue.put(one_task)
     else:
         for idx, row in enumerate(rows):
