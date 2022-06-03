@@ -4,17 +4,7 @@ import os
 import pandas
 from tqdm.auto import tqdm
 import geopandas as gpd
-import pandas as pd
-import numpy as np
-import math
-from multiprocessing import Process, Queue, cpu_count
-import queue
-from shapely.geometry import Point, box, MultiPolygon, Polygon, GeometryCollection, shape
-import shapely
-from shapely.ops import unary_union
-from shapely.validation import make_valid
 import webbrowser
-import matplotlib.pyplot as plt
 from setting_helpers import load_yaml_config_file
 import folium
 
@@ -28,8 +18,10 @@ def search_newest_file_in_folder(path_to_folder, unique_search_string):
 
 
 if __name__ == '__main__':
+    # load settings first
     settings = load_yaml_config_file('./settings/settings_talsperre_malter.yaml')
 
+    # load last generated files
     path_per_tilegroup_file = search_newest_file_in_folder(Path('geodataframes'), 'path_per_tilegroup')
     paths_gdf = gpd.read_file(filename=f'./geodataframes/{path_per_tilegroup_file}.geojson')
 
