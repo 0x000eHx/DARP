@@ -57,8 +57,6 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
 
         except queue.Empty as e:
             print(e)
-        except queue.Full as e:
-            print(e)
 
     # Tell child processes to stop
     for i in range(num_of_processes):
@@ -83,11 +81,12 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
             task_queue.put(one_task)
             task_counter += 1
 
-    # Start worker processes
+    # if a lot of work needs to be done then copy the original list_subcells_dicts and give every process its own
     list_of_deepcopys = [list_subcells_dicts]
     for i in range(process_count - 1):
         list_of_deepcopys.append(copy.deepcopy(list_subcells_dicts))
 
+    # start search_worker with their own copy of list_subcells_dicts
     for i in range(process_count):
         # using search worker generates a lot of memory usage, cause of copys, so increase value with care
         Process(target=search_worker, args=(task_queue, done_queue, list_of_deepcopys[i])).start()
@@ -97,7 +96,7 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
             idx, geoseries = done_queue.get()
             if not geoseries.empty:
                 list_geoseries.append(geoseries)
-                # append, not extend: new geoseries is just one line and assigned start point
+                # append, not extend: new geoseries is just one line with assigned start point etc
 
         except queue.Empty as e:
             print(e)
@@ -129,14 +128,7 @@ def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_
     p2 = next((item['geometry'] for item in list_of_subcells_dicts if
                (item["column_idx"] == p2_c_i and item["row_idx"] == p2_r_i)), None)
 
-    # query as tiny bit (1 or 2 ms) faster than
-    # gdf_trajectory[gdf_trajectory['np_x'] == np1x][gdf_trajectory['np_y'] == np1y].reset_index()
-    # p1 = gdf.query(f'column_idx == {p1_c_i} and row_idx == {p1_r_i}')
-    # p2 = gdf.query(f'column_idx == {p2_c_i} and row_idx == {p2_r_i}')
-
     if p1 is not None and p2 is not None:
-        # point1 = p1.reset_index().geometry.centroid[0]
-        # point2 = p2.reset_index().geometry.centroid[0]
 
         data = {'tiles_group_identifier': tiles_group_identifier,
                 'row_idx': np.nan,
@@ -146,6 +138,7 @@ def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_
                 'line': True,
                 'geometry': LineString([p1.centroid, p2.centroid])}
         geoseries = gpd.GeoSeries(data, crs=4326)
+
     else:
         geoseries = gpd.GeoSeries()
 
@@ -191,7 +184,7 @@ def divide_polygon(row_idx, column_idx, poly: Polygon, assigned_startpoint, tile
 
 
 def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height):
-    print("Generate numpy contour bool_area_array from given number of multipolygons")
+    print("Generate numpy contour bool_area_array from given MultiPolygon!")
     union_area = make_valid(unary_union(multipoly))
     minx, miny, maxx, maxy = union_area.bounds
 
