@@ -33,7 +33,8 @@ class MultiRobotPathPlanner(DARP):
             print("DARP did not manage to find a solution for the given configuration!")
 
         else:
-            if image_export:
+            # don't let every darp execution write an image, only if darp actually does anything the image gets written
+            if image_export and len(self.darp_instance.init_robot_pos) > 1:
                 self.to_image()
 
             if video_export:
@@ -162,12 +163,17 @@ class MultiRobotPathPlanner(DARP):
 
             self.execution_time = time.time() - start_time
 
-            print(f'\nResults:')
-            print(f'Number of cells per robot: {best_case_num_paths}')
-            print(f'Minimum number of cells in robots paths: {min(best_case_num_paths)}')
-            print(f'Maximum number of cells in robots paths: {max(best_case_num_paths)}')
-            print(f'Average number of cells in robots paths: {np.mean(np.array(best_case_num_paths))}')
-            print(f'\nTurns Analysis: {self.best_case}')
+            if len(best_case_returnPaths) > 0:
+                print(f'\nResults for "{export_file_name}" tiles group:')
+                print(f'Number of cells per robot: {best_case_num_paths}')
+                print(f'Minimum number of cells in robots paths: {min(best_case_num_paths)}')
+                print(f'Maximum number of cells in robots paths: {max(best_case_num_paths)}')
+                print(f'Average number of cells in robots paths: {np.mean(np.array(best_case_num_paths))}')
+                print(f'\nTurns Analysis for: {self.best_case}')
+            else:
+                print(f'ATTENTION:\nSomething went wrong in path construction or finding '
+                      f'the best path for "{export_file_name}" tiles group!')
+                print("self.best_case.paths doesn't hold paths tuples!")
 
     def CalcRealBinaryReg(self, BinaryRobotRegion, rows, cols):
         temp = np.zeros((2 * rows, 2 * cols))
