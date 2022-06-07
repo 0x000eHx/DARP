@@ -1,14 +1,15 @@
 import time
 import copy
-import psutil
+from collections import defaultdict
 import geopandas as gpd
 import numpy as np
 import pandas
 from tqdm.auto import tqdm
 from multiprocessing import Process, Queue
 import queue
-from shapely.geometry import Polygon, MultiPolygon, LineString, box, MultiLineString
-from shapely.ops import unary_union
+from pyproj import Geod
+from shapely.geometry import Polygon, MultiPolygon, LineString, box, MultiLineString, Point
+from shapely.ops import unary_union, nearest_points
 from shapely.validation import make_valid
 from shapely import speedups
 
@@ -16,15 +17,98 @@ if speedups.available:
     speedups.enable()
 
 
-def calc_path_A_to_B():
-    path_length_meter = 0
-    line = LineString()
+def tasks_generation(grid_gdf, list_real_start_points_coords, max_distance_per_task_meter):
+    closest_polygons = search_closest_polygon_to_start_points(list_real_start_points_coords, grid_gdf)
 
-    return line, path_length_meter
+    dict_tasks = defaultdict(dict)
+    for idx, geoserie in grid_gdf.iterrows():
+        num_polys = len(list(geoserie.geometry.geoms))
+
+        dict_tasks[geoserie.tiles_group_identifier]['num_polys'] = num_polys
+
+        dict_tasks[geoserie.tiles_group_identifier]['sensor_line_length_meter'] = geoserie.sensor_line_length_meter
+
+        # * 4 (and not * 2) cause its the big STC tiles and not the small subcell tiles for the path calculations
+        # sensor_line_length_meter value inside grid_gdf is the value from settings! need to get doubled for STC
+        dict_tasks[geoserie.tiles_group_identifier][
+            'path_length_multipoly'] = num_polys * geoserie.sensor_line_length_meter * 4
+
+    num_Multipolys = len(grid_gdf.iterrows())  # count the series (which are all the MultiPolygons
+    tasks_list = []
+    multipolys_considered = 0
+
+    for multipoly_ident in dict_tasks:
+        # go through all MultiPolygons from grid generation
+        closest_startpoint_coords = ()
+
+        for startpoint in closest_polygons:
+            # go through all available startpoints and choose the one which is closest to the Multipolygon
+            #  for the scanning task
+            if closest_startpoint_coords.is_empty:
+                closest_startpoint_coords = startpoint
+            else:
+                if Point(closest_startpoint_coords).distance(
+                        closest_polygons[closest_startpoint_coords][multipoly_ident]) > Point(startpoint).distance(
+                        closest_polygons[startpoint][multipoly_ident]):
+                    closest_startpoint_coords = startpoint
+
+        # get shortest way between Multipoly and startpoint
+        # TODO insert pathfinding way inside area here later for example with func calc_path_A_to_B
+        shorest_line_startpoint_multipoly = calc_path_A_to_B(Point(closest_startpoint_coords), closest_polygons[closest_startpoint_coords][multipoly_ident])
+
+        # now look if the whole task means path from the start to the Multipoly and pack already fills max_distance_per_task
+        rest = max_distance_per_task_meter - calc_length_meter(shorest_line_startpoint_multipoly) * 2 - \
+               dict_tasks[multipoly_ident]['path_length_multipoly']
+
+        # tasks_list.append()
 
 
-def get_start_points_from_coords(list_start_point_coords: list, numpy_bool_array: np.ndarray):
-    list_start_points = []
+def calc_path_A_to_B(shapely_obj1, shapely_obj2):
+    # TODO Pathfinding with A* or whatever
+
+    # path is only direct line between the 2 objects
+    nearest_points_objs = nearest_points(shapely_obj1, shapely_obj2)
+    line = LineString([nearest_points_objs[0], nearest_points_objs[1]])
+
+    return line
+
+
+def calc_length_meter(shapely_obj):
+    """
+    Calculation of the length in meter.
+
+    :param shapely_obj: Shapely Object like LineString, MultiLineString or Polygon...
+
+    :return: Length in meter
+    """
+
+    geod = Geod(ellps="WGS84")
+
+    length_meter = geod.geometry_length(shapely_obj)
+
+    return length_meter
+
+
+def search_closest_polygon_to_start_points(list_start_point_coords: list, grid_gdf: gpd.GeoDataFrame):
+    """
+    Search the closest to the startpoint Polygon in every MultiPolygon. Check all available real Start Points.
+
+    :param list_start_point_coords: List of start point coords (need to make Points out of it)
+
+    :param grid_gdf: GeoDataframe with all MultiPolygons from grid generation.
+
+    :return: Dictionary of all start point coords with tiles_group_identifier and the closest polygon.
+    """
+    nearest_poly_to_start_point_dict = defaultdict(dict)
+
+    for start_point_coords in list_start_point_coords:
+
+        for idx, geoserie in grid_gdf.iterrows():
+            list_of_polys = list(geoserie.geometry.geoms)
+            nearest_poly_to_start_point = min(list_of_polys, key=lambda poly: Point(start_point_coords).distance(nearest_points(Point(start_point_coords), poly)[1]))
+            nearest_poly_to_start_point_dict[tuple(start_point_coords)][geoserie.tiles_group_identifier] = nearest_poly_to_start_point
+
+    return nearest_poly_to_start_point_dict
 
 
 def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np.ndarray, paths, tiles_group_identifier):
