@@ -53,7 +53,7 @@ def check_start_parameter(dict_start_parameter: dict, bool_area: np.ndarray):
         print("Amount of area tiles (" + str(effective_tile_number) +
               ") to cover is smaller than sum of tiles covered by all drones / startpoints ("
               + str(sum_tiles_covered_area) + ").\nWill reduce number of start points until last startpoint covers "
-              "as many or less then given maximum tiles_count to maximize efficiency!")
+                                              "as many or less then given maximum tiles_count to maximize efficiency!")
     elif diff_tiles > 0:
         print("A number of", str(diff_tiles), "tiles isn't assignable to any start point.\n",
               "Aborting DARP! Please start DARP with the necessary count of start points and tiles_count")
@@ -284,9 +284,13 @@ def euclidian_distance_points2d(array1: np.array,
            ) ** 0.5  # faster function with faster sqrt
 
 
-# TODO make numba compatible! output has inappropriate values?
-#  at some point ArrayOfElements has at least one entry -1 (from/in assign func)
-#  maybe doesn't work with numba? Don't know... implemented mask now to see if it solves this problem
+# TODO make numba compatible! masks don't work with numba. Not implemented.
+#  ATTENTION:
+#  After normalize_metric_matrix call an error can occur:
+#  Sometimes ArrayOfElements has one ore more -1 entries, means one start point gets 0 cells assigned in assign func!
+#  This should not happen, cause the start points should always have the (only) lowest possible value (zero) inside
+#  the metric_matrix and no other cell in each metric_matrix layer should get the value zero or below.
+#  Therefore at least one cell should get assigned to each start point / drone in ArrayOfElements. Weird...
 # @njit(fastmath=True)
 def normalize_metric_matrix(non_obs_pos: np.ndarray,
                             area_bool: np.ndarray,
@@ -295,7 +299,7 @@ def normalize_metric_matrix(non_obs_pos: np.ndarray,
     metric_matrix_mask = metric_matrix[:, mask[0], mask[1]]
     maxV = np.amax(metric_matrix_mask)
     minV = np.amin(metric_matrix_mask)
-    new_metric_matrix = np.empty(metric_matrix.shape, dtype=np.float_)
+    new_metric_matrix = np.zeros(metric_matrix.shape, dtype=np.float_)
 
     for cell in non_obs_pos:
         new_metric_matrix[:, cell[0], cell[1]] = metric_matrix[:, cell[0], cell[1]] - minV
@@ -602,9 +606,16 @@ class DARP:
                         break
 
                     if check_for_near_float64_overflow(self.MetricMatrix):
+                        print("Float64 Value Range Limit Hit!\nCurrent Values:\nDesirable Assignments:",
+                              self.DesirableAssign, "\nTiles per Robot:", self.ArrayOfElements,
+                              "\nConnected:", self.ConnectedRobotRegions)
                         self.MetricMatrix = normalize_metric_matrix(self.non_obstacle_positions, self.GridEnv_bool,
                                                                     self.MetricMatrix)
-                        print("\nMetricMatrix normalized")
+                        # call assign again and check if there are changes after normalization?!
+                        assign(self.non_obstacle_positions, self.A, self.MetricMatrix, self.ArrayOfElements)
+                        print("\nMetricMatrix normalized\nNew Values:\nDesirable Assignments:",
+                              self.DesirableAssign, "\nTiles per Robot:", self.ArrayOfElements,
+                              "\nConnected:", self.ConnectedRobotRegions)
 
                     # if ConnectedRobotRegions aren't all True or DesirableAssign and ArrayOfElements don't match
                     TotalNegPerc = 0
