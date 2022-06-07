@@ -1,19 +1,17 @@
 import sys
 import geopandas as gpd
 from pathlib import Path
-import webbrowser
 import os
 import time
-from gridding_helpers import get_biggest_area_polygon, check_real_start_points, get_long_lat_diff
+from gridding_helpers import check_real_start_points
 from path_planning_pre_calculation import generate_numpy_contour_array, get_random_start_points_list, \
-    generate_stc_geodataframe
+    generate_stc_geodataframe, calc_length_meter
 from setting_helpers import load_yaml_config_file
 from MultiRobotPathPlanner import MultiRobotPathPlanner
-import folium
 import pandas
 import numpy as np
-from shapely.ops import unary_union, linemerge
-from shapely.validation import make_valid
+from shapely.ops import linemerge
+
 
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 
@@ -28,6 +26,12 @@ def generate_file_name(filename: str):
 
 
 def newest_grid_file_in_folder(path_to_folder):
+    """
+    Search latest file in folder with search_pattern 'grid' in its name.
+
+    :param path_to_folder: Path relative to program execution folder
+    :return: file name without its suffix '.geojson'
+    """
     search_pattern = ['grid']
     files_in_folder = os.listdir(Path(path_to_folder).resolve())
     files = [Path(path_to_folder, nm).resolve() for ps in search_pattern for nm in files_in_folder if ps in nm]
@@ -45,9 +49,15 @@ if __name__ == '__main__':
 
     list_real_start_points_coords = settings['real_start_points']
     export_file_name = generate_file_name(settings['geojson_file_name'])
+    max_distance_per_task = settings['max_distance_per_task']
 
+    # check if start points from settings are inside given geojson area
     if check_real_start_points(settings['geojson_file_name'], settings['real_start_points']):
 
+        # path pre-calculations
+
+
+        # go through all MutliPolygons of grid generation
         measure_start = time.time()
 
         gdf_subcells_and_lines_collection = gpd.GeoDataFrame()
@@ -92,10 +102,13 @@ if __name__ == '__main__':
                     # path_multilinestring = make_valid(unary_union(merged_lines))
                     print("Unified path lines!")
 
+                    # calc the length of the path LineString / MultiLineString in meter
+                    path_length = round(calc_length_meter(path_multilinestring), 2)
+
                     data = [{'tiles_group_identifier': str(geoserie.tiles_group_identifier),
                              'assigned_startpoint': startpoint,
                              'sensor_line_length_meter': geoserie.sensor_line_length_meter,
-                             'path_length_meter': path_multilinestring.length,
+                             'path_length_meter': path_length,
                              'geometry': path_multilinestring}]
 
                     gdf_one_multipoly_path = gpd.GeoDataFrame(data, crs=4326).set_geometry('geometry')
