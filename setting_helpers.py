@@ -6,8 +6,8 @@ def write_yaml_config_file(str_filepath):
                       'sensor_line_length_meter': [5, 15],  # scanner line lengths in meter for grid generation (can contain one or more values)
                       'real_start_points': [
                           [13.653522254079629, 50.92603465830493],  # shapely x (longitude), y (latitude) values
-                          [13.6500293945372, 50.91945111878728],
-                          [13.654725066304804, 50.921186253206045],
+                          [13.6500293945372, 50.91945111878728],    # position in this list will be priority
+                          [13.654725066304804, 50.921186253206045], # top coords get chosen first
                           [13.664545589728833, 50.907868824583616]
                       ],
                       'polygon_threshold': [5, 4],  # always keep the same count of numbers here as in sensor_line_length_meter
@@ -15,9 +15,9 @@ def write_yaml_config_file(str_filepath):
                       # index is equivalent to index of edge length
                       'max_distance_per_task': 10000,  # in meter
                       'trigger_image_export_final_assignment_matrix': False,  # recommended only for debugging purposes
-                      'trigger_video_export_assignment_matrix_changes': False,  # recommended only for debugging purposes
+                      'trigger_video_export_assignment_matrix_changes': True,  # recommended only for debugging purposes
                       'darp_max_iter': 100000,
-                      'darp_dynamic_tiles_threshold': 500,
+                      'darp_dynamic_tiles_threshold': 500,  # if darp hits iter max, will increase by 10 until this threshold reached
                       'darp_cc_variation': 0.01,
                       'darp_random_level': 0.0001,
                       'darp_random_seed_value': None,
