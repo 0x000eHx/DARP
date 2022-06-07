@@ -116,6 +116,9 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
     gdf_collection = gpd.GeoDataFrame(pandas.concat([gdf_subcells, gdf_trajectory_paths], axis=0, ignore_index=True),
                                       crs=gdf_trajectory_paths.crs)
 
+    # remove the row_idx, column_idx cause they are the STC MultiPolygons numpy array values and not relevant anymore
+    gdf_collection.drop(['row_idx', 'column_idx'], inplace=True, axis=1)
+
     return gdf_collection
 
 
@@ -184,7 +187,7 @@ def divide_polygon(row_idx, column_idx, poly: Polygon, assigned_startpoint, tile
 
 
 def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height):
-    print("Generate numpy contour bool_area_array from given MultiPolygon!")
+    print("Generate numpy contour bool_area_array from STC grid MultiPolygon!")
     union_area = make_valid(unary_union(multipoly))
     minx, miny, maxx, maxy = union_area.bounds
 
@@ -231,7 +234,7 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
     for i in range(num_of_processes):
         task_queue.put('STOP')
 
-    print("Area contour numpy array (bool_area_array) generated from tiles.")
+    print("Area contour numpy array (bool_area_array) generated from big STC tiles.")
 
     gdf_numpy_positions = gpd.GeoDataFrame(list_numpy_contour_positions_geoseries, crs=4326).set_geometry('geometry')
 
