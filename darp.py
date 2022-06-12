@@ -487,7 +487,7 @@ class DARP:
             self.assignment_matrix_visualization = darp_area_visualization(self.A, len(self.init_robot_pos),
                                                                            self.color, self.init_robot_pos)
 
-        if self.video_export:
+        if self.video_export and len(self.init_robot_pos) > 1:
             movie_file_path = Path("result_export", self.import_file_name + ".gif")
             if not movie_file_path.parent.exists():
                 os.makedirs(movie_file_path.parent)
@@ -512,10 +512,11 @@ class DARP:
         # if self.init_robot_pos and self.DesirableAssign get reduced to only ONE drone, cause the array is to small
         # or whatnot darp shouldn't start at all to reduce calculation overhead
 
-        if not len(self.DesirableAssign) > 1:
+        if not len(self.init_robot_pos) > 1:
             success = True
-            if self.video_export:
-                self.gif_writer.close()
+            # no self.gif_writer created if not len(self.init_robot_pos) > 1
+            # if self.video_export:
+            #     self.gif_writer.close()
             print("Initial drone / startpoint count is only 1. Skip DARP.")
 
         else:
