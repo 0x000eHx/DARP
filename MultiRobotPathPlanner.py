@@ -37,7 +37,8 @@ class MultiRobotPathPlanner(DARP):
             if image_export and len(self.darp_instance.init_robot_pos) > 1:
                 self.to_image()
 
-            if video_export:
+            if video_export and len(self.darp_instance.init_robot_pos) > 1:
+                # otherwise there will be no saved .gif file to convert
                 self.to_video()
 
             # Iterate for 4 different ways to join edges in MST
