@@ -26,24 +26,30 @@ class Grid_Task:
     One task which can hold its assigned tile_edge_length and all MultiPolygons!
     """
 
-    def __init__(self):
-        self.tile_edge_length: float = 0.0
-        self.multipolygon: MultiPolygon = MultiPolygon()
-        self.task_polygon_color: str = ''
+    def __init__(self, tile_edge_length: float, new_map: Map):
 
-    # setter
-    def set_tile_edge_length(self, length_meter):
-        if length_meter > 0:
-            self.tile_edge_length = length_meter
+        if tile_edge_length > 0:
+            self.tile_edge_length = tile_edge_length
         else:
             print("Defined tile edge length was zero or below. Setting it back to zero!")
             self.tile_edge_length = 0.0
 
+        self.multipolygon: MultiPolygon = MultiPolygon()
+
+        self.task_polygon_color: str = self.define_polygon_color()
+
+        self.draw_control = self.define_draw_control()
+
+        self.task_map = new_map
+        self.task_map.add_control(self.draw_control)
+
+    # setter
     def set_multipoly(self, new_multipoly: MultiPolygon):
         self.multipolygon = new_multipoly
 
     def set_task_polygon_color(self, hex_color_str: str):
-        self.task_polygon_color = hex_color_str
+        if len(hex_color_str) > 0:
+            self.task_polygon_color = hex_color_str
 
     # getter
     def get_tile_edge_length(self):
@@ -54,6 +60,89 @@ class Grid_Task:
 
     def get_task_polygon_color(self):
         return self.task_polygon_color
+
+    # define
+    def define_polygon_color(self):
+
+        random_number = random.randint(1118481, 16777215)
+        hex_number = str(hex(random_number))
+        color_hex_number = '#' + hex_number[2:]
+
+        return color_hex_number
+
+    def define_draw_control(self):
+        draw_control = DrawControl()
+        draw_control.circle = {
+            "shapeOptions": {
+                "fillColor": self.task_polygon_color,
+                "color": self.task_polygon_color,
+                "fillOpacity": 0.5
+            }
+        }
+        draw_control.polyline = {}
+        draw_control.circlemarker = {}
+        draw_control.marker = {}
+        draw_control.rectangle = {
+            "shapeOptions": {
+                "fillColor": self.task_polygon_color,
+                "color": self.task_polygon_color,
+                "fillOpacity": 0.5
+            }
+        }
+        draw_control.polygon = {
+            "shapeOptions": {
+                "fillColor": self.task_polygon_color,
+                "color": self.task_polygon_color,
+                "fillOpacity": 0.5
+            },
+            "drawError": {
+                "color": "#dd253b",
+                "message": "Something went wrong!"
+            },
+            "allowIntersection": False
+        }
+
+        # Popups
+        message = HTML()
+        message.value = f'<b>{self.tile_edge_length} meters</b>'
+        message.placeholder = "Sensor line width"
+        message.description = "Sensor line width"
+        draw_control.popup = message
+
+        return draw_control
+
+    def confirm_choices(self):
+        """
+        We need to confirm the polygon choices.
+
+        Sadly the DrawControl.data gets updated after on_draw(callfunc) finished.
+        """
+        print('### confirm_choices call ###\n')
+        print('### draw_control.data ###\n', str(self.draw_control.data))
+
+        multipoly = self.create_multipoly_from_data(self.draw_control.data)
+
+        self.set_multipoly(multipoly)
+
+    def create_multipoly_from_data(self, geojson_data):
+        print('### create_multipoly_from_data call ###\n')
+        list_of_polys = []
+
+        for obj in geojson_data:
+            # TODO circle and rectangle should be possible too
+
+            print('### obj ###\n', obj)
+            # Shapely Polygon
+            poly_coords = []
+            if obj['geometry']['type'] == 'Polygon':
+                for coords in obj['geometry']['coordinates'][0][:-1][:]:
+                    poly_coords.append(tuple(coords))
+
+            if len(poly_coords) > 1:
+                # print(str(poly_coords))
+                list_of_polys.append(Polygon(poly_coords))
+
+        return MultiPolygon(list_of_polys)
 
 
 class Grid_Generation_Tasks:
@@ -72,8 +161,8 @@ class Grid_Generation_Tasks:
             self.area_multipoly = area_gdf
 
             # create map center for map location
-            self.map_center = list(area_gdf.geometry[0].centroid.coords)
-            self.map_center_y, self.map_center_x = self.map_center[0]
+            self.map_center = list(area_gdf.geometry[0].centroid.coords)[0]  # why does the centroid return a Point, but map_center is list(tuples)? weird...
+            self.map_center_y, self.map_center_x = self.map_center
 
             # create basic map for presentation
             self.base_map = Map(
@@ -107,89 +196,16 @@ class Grid_Generation_Tasks:
         # TODO check if there is already a task for tile_edge_length in list_of_tasks
 
         if tile_edge_length in self.tile_edge_lengths:
-            task_map = copy.copy(self.base_map)  # task base_map as base for the task_map
 
-            handle = Grid_Task()
-            handle.set_tile_edge_length(tile_edge_length)
+            new_task = Grid_Task(tile_edge_length, self.base_map)  # task self.base_map as base for the task_map
 
-            # random color
-            random_number = random.randint(1118481, 16777215)
-            hex_number = str(hex(random_number))
-            color_hex_number = '#' + hex_number[2:]
-            handle.set_task_polygon_color(color_hex_number)
+            self.list_of_tasks.append(new_task)
 
-            draw_control = DrawControl()
-            draw_control.circle = {
-                "shapeOptions": {
-                    "fillColor": color_hex_number,
-                    "color": color_hex_number,
-                    "fillOpacity": 0.5
-                }
-            }
-            draw_control.polyline = {}
-            draw_control.circlemarker = {}
-            draw_control.marker = {}
-            draw_control.rectangle = {
-                "shapeOptions": {
-                    "fillColor": color_hex_number,
-                    "color": color_hex_number,
-                    "fillOpacity": 0.5
-                }
-            }
-            draw_control.polygon = {
-                "shapeOptions": {
-                    "fillColor": color_hex_number,
-                    "color": color_hex_number,
-                    "fillOpacity": 0.5
-                },
-                "drawError": {
-                    "color": "#dd253b",
-                    "message": "Something went wrong!"
-                },
-                "allowIntersection": False
-            }
-
-            def handle_draw(target, action, geo_json):
-                multipoly = self.create_multipoly(draw_control.data)
-                handle.set_multipoly(multipoly)
-
-            draw_control.on_draw(handle_draw)
-
-            message = HTML()
-            message.value = f'<b>{tile_edge_length} meters</b>'
-            message.placeholder = "Sensor line width"
-            message.description = "Sensor line width"
-            draw_control.popup = message
-
-            task_map.add_control(draw_control)
-
-            self.list_of_tasks.append(handle)
-
-            return task_map
+            return new_task
 
         else:
             print("tile_edge_length", tile_edge_length, "not in the settings")
             return None
-
-    def create_multipoly(self, geojson_data):
-        list_of_polys = []
-
-        for obj in geojson_data:
-            # TODO circle and rectangle should be possible too
-
-            print(obj)
-            # Shapely Polygon
-            poly_coords = []
-            if obj['geometry']['type'] == 'Polygon':
-                for coords in obj['geometry']['coordinates'][0][:-1][:]:
-                    poly_coords.append(tuple(coords))
-                    print("Added one coord to Polygon: " + str(tuple(coords)))
-
-            if len(poly_coords) > 1:
-                print(str(poly_coords))
-                list_of_polys.append(Polygon(poly_coords))
-
-        return MultiPolygon(list_of_polys)
 
 
 def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: float):
