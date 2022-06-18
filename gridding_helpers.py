@@ -1,3 +1,5 @@
+import copy
+import random
 from pathlib import Path
 import uuid
 import pandas
@@ -6,15 +8,188 @@ from tqdm.auto import tqdm
 import geopandas as gpd
 import numpy as np
 import math
-from multiprocessing import Process, Queue, cpu_count
+from multiprocessing import Process, Queue
 import queue
 from shapely.geometry import Point, box, Polygon, MultiPolygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 from shapely import speedups
+from ipyleaflet import Map, basemaps, basemap_to_tiles, projections, GeoData, LayersControl, DrawControl, FullScreenControl, MeasureControl
+from ipywidgets import HTML
 
 if speedups.available:
     speedups.enable()
+
+
+class Grid_Task:
+    """
+    One task which can hold its assigned tile_edge_length and all MultiPolygons!
+    """
+
+    def __init__(self):
+        self.tile_edge_length: float = 0.0
+        self.multipolygon: MultiPolygon = MultiPolygon()
+        self.task_polygon_color: str = ''
+
+    # setter
+    def set_tile_edge_length(self, length_meter):
+        if length_meter > 0:
+            self.tile_edge_length = length_meter
+        else:
+            print("Defined tile edge length was zero or below. Setting it back to zero!")
+            self.tile_edge_length = 0.0
+
+    def set_multipoly(self, new_multipoly: MultiPolygon):
+        self.multipolygon = new_multipoly
+
+    def set_task_polygon_color(self, hex_color_str: str):
+        self.task_polygon_color = hex_color_str
+
+    # getter
+    def get_tile_edge_length(self):
+        return self.tile_edge_length
+
+    def get_multipoly(self):
+        return self.multipolygon
+
+    def get_task_polygon_color(self):
+        return self.task_polygon_color
+
+
+class Grid_Generation_Tasks:
+    """
+    Create all tasks for an area which you need to set at the start.
+
+    For each tile_edge_length you can set several MultiPolygon.
+
+    For each one you need to create a separate task!
+    """
+
+    def __init__(self, list_of_tile_edge_lengths, list_of_poly_thresholds, area_gdf: gpd.GeoDataFrame):
+
+        if check_edge_length_polygon_threshold(list_of_tile_edge_lengths, list_of_poly_thresholds):
+
+            self.area_multipoly = area_gdf
+
+            # create map center for map location
+            self.map_center = list(area_gdf.geometry[0].centroid.coords)
+            self.map_center_y, self.map_center_x = self.map_center[0]
+
+            # create basic map for presentation
+            self.base_map = Map(
+                basemap=basemap_to_tiles(basemaps.OpenStreetMap.Mapnik),
+                center=(self.map_center_x, self.map_center_y),
+                zoom=14,
+                scroll_wheel_zoom=True
+            )
+            area_layer = GeoData(geo_dataframe=area_gdf.head(1), style={'color': 'blue'}, name='Talsperre Malter')
+            self.base_map.add_layer(area_layer)
+
+            # add controls
+            self.base_map.add_control(LayersControl())
+            self.base_map.add_control(FullScreenControl())
+            self.base_map.add_control(MeasureControl())
+
+            self.tile_edge_lengths: set[float] = set(list_of_tile_edge_lengths)
+
+            self.list_of_tasks: list[Grid_Task] = []
+
+        else:
+            print("Something is off! Check List of Tile Edge Lengths and its assigned List of Polygon Thresholds")
+
+    def __len__(self):
+        """
+        Number of tasks
+        """
+        return len(self.list_of_tasks)
+
+    def create_task(self, tile_edge_length: float):
+        # TODO check if there is already a task for tile_edge_length in list_of_tasks
+
+        if tile_edge_length in self.tile_edge_lengths:
+            task_map = copy.copy(self.base_map)  # task base_map as base for the task_map
+
+            handle = Grid_Task()
+            handle.set_tile_edge_length(tile_edge_length)
+
+            # random color
+            random_number = random.randint(1118481, 16777215)
+            hex_number = str(hex(random_number))
+            color_hex_number = '#' + hex_number[2:]
+            handle.set_task_polygon_color(color_hex_number)
+
+            draw_control = DrawControl()
+            draw_control.circle = {
+                "shapeOptions": {
+                    "fillColor": color_hex_number,
+                    "color": color_hex_number,
+                    "fillOpacity": 0.5
+                }
+            }
+            draw_control.polyline = {}
+            draw_control.circlemarker = {}
+            draw_control.marker = {}
+            draw_control.rectangle = {
+                "shapeOptions": {
+                    "fillColor": color_hex_number,
+                    "color": color_hex_number,
+                    "fillOpacity": 0.5
+                }
+            }
+            draw_control.polygon = {
+                "shapeOptions": {
+                    "fillColor": color_hex_number,
+                    "color": color_hex_number,
+                    "fillOpacity": 0.5
+                },
+                "drawError": {
+                    "color": "#dd253b",
+                    "message": "Something went wrong!"
+                },
+                "allowIntersection": False
+            }
+
+            def handle_draw(target, action, geo_json):
+                multipoly = self.create_multipoly(draw_control.data)
+                handle.set_multipoly(multipoly)
+
+            draw_control.on_draw(handle_draw)
+
+            message = HTML()
+            message.value = f'<b>{tile_edge_length} meters</b>'
+            message.placeholder = "Sensor line width"
+            message.description = "Sensor line width"
+            draw_control.popup = message
+
+            task_map.add_control(draw_control)
+
+            self.list_of_tasks.append(handle)
+
+            return task_map
+
+        else:
+            print("tile_edge_length", tile_edge_length, "not in the settings")
+            return None
+
+    def create_multipoly(self, geojson_data):
+        list_of_polys = []
+
+        for obj in geojson_data:
+            # TODO circle and rectangle should be possible too
+
+            print(obj)
+            # Shapely Polygon
+            poly_coords = []
+            if obj['geometry']['type'] == 'Polygon':
+                for coords in obj['geometry']['coordinates'][0][:-1][:]:
+                    poly_coords.append(tuple(coords))
+                    print("Added one coord to Polygon: " + str(tuple(coords)))
+
+            if len(poly_coords) > 1:
+                print(str(poly_coords))
+                list_of_polys.append(Polygon(poly_coords))
+
+        return MultiPolygon(list_of_polys)
 
 
 def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: float):
@@ -196,7 +371,8 @@ def check_edge_length_polygon_threshold(list_sensor_line_lengths, polys_threshol
     # check if polygon_threshold list contains a negative value and replace it with a reasonable entry
     for poly_thresh in poly_threshold_array:
         if poly_thresh < 0:
-            print("The polygon_threshold entry", poly_thresh, "< 0 is invalid. Only zero or positiv values allowed. Abort!")
+            print("The polygon_threshold entry", poly_thresh,
+                  "< 0 is invalid. Only zero or positiv values allowed. Abort!")
             return False
 
     return True
@@ -337,7 +513,6 @@ def create_geodataframe_dict(best_offset,
                              dict_square_edge_length_long_lat,
                              grid_edge_length_meter,
                              list_known_geo_coll_of_single_polys):
-
     gdf_dict = {'tiles_group_identifier': [str(uuid.uuid4()) for _ in list_known_geo_coll_of_single_polys],
                 'offset_longitude': best_offset[0],
                 'offset_latitude': best_offset[1],
@@ -429,7 +604,6 @@ def find_tile_groups_of_given_edge_length(area_polygon,
 
 
 def find_grid(area_polygon, list_sensor_line_lengths: list, polygon_threshold: list):
-
     # generate tile width and height by calculating the biggest tile size to go for and divide it into the other tile sizes
     # hopefully clears out a mismatch in long/lat max and min values between biggest tile size and smallest
 
@@ -439,7 +613,8 @@ def find_grid(area_polygon, list_sensor_line_lengths: list, polygon_threshold: l
 
     gdf_collection = gpd.GeoDataFrame()  # collect all results in this geodataframe
 
-    grid_square_edges_meter = np.flip(grid_square_edges_meter)  # from greatest to smallest value, means settings flipped
+    grid_square_edges_meter = np.flip(
+        grid_square_edges_meter)  # from greatest to smallest value, means settings flipped
     polygon_threshold = np.flip(polygon_threshold)  # keep threshold values relative to edge lengths intact
 
     # search starts at biggest tiles, the greatest edge length and relative polygon threshold
