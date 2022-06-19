@@ -226,8 +226,8 @@ class Grid_Generation_Task_Manager:
         if not scanner_line_width_known:
             print("Couldn't find a defined task for the given scanner_line_width " + str(scanner_line_width))
             print("Need to create one, meaning create_task(scanner_line_width) gets called.")
-            task = self.create_task(scanner_line_width)
-            return task
+            new_task = self.create_task(scanner_line_width)
+            return new_task
 
     def extract_tasks(self):
         # check if there is a task available for every edge_lenth in list self.scanner_line_widths
