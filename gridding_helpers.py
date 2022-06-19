@@ -26,21 +26,21 @@ class Grid_Task:
     One task which can hold its assigned tile_edge_length and all MultiPolygons!
     """
 
-    def __init__(self, tile_edge_length: float, new_map: Map):
+    def __init__(self, scanner_line_width: float, task_map: Map, area_multipoly: gpd.GeoDataFrame):
 
-        if tile_edge_length > 0:
-            self.tile_edge_length = tile_edge_length
+        if scanner_line_width > 0:
+            self.scanner_line_width = scanner_line_width
         else:
             print("Defined tile edge length was zero or below. Setting it back to zero!")
-            self.tile_edge_length = 0.0
+            self.scanner_line_width = 0.0
 
-        self.multipolygon: MultiPolygon = MultiPolygon()
+        self.multipolygon: MultiPolygon = area_multipoly.geometry[0]
 
         self.task_polygon_color: str = self.define_polygon_color()
 
         self.draw_control = self.define_draw_control()
 
-        self.task_map = new_map
+        self.task_map = task_map
         self.task_map.add_control(self.draw_control)
 
     # setter
@@ -53,7 +53,7 @@ class Grid_Task:
 
     # getter
     def get_tile_edge_length(self):
-        return self.tile_edge_length
+        return self.scanner_line_width
 
     def get_multipoly(self):
         return self.multipolygon
@@ -104,7 +104,7 @@ class Grid_Task:
 
         # Popups
         message = HTML()
-        message.value = f'<b>{self.tile_edge_length} meters</b>'
+        message.value = f'<b>{self.scanner_line_width} meters</b>'
         message.placeholder = "Sensor line width"
         message.description = "Sensor line width"
         draw_control.popup = message
@@ -145,23 +145,23 @@ class Grid_Task:
         return MultiPolygon(list_of_polys)
 
 
-class Grid_Generation_Tasks:
+class Grid_Generation_Task_Manager:
     """
     Create all tasks for an area which you need to set at the start.
 
-    For each tile_edge_length you can set several MultiPolygon.
+    For each scanner_line_length you can set several MultiPolygon.
 
     For each one you need to create a separate task!
     """
 
-    def __init__(self, list_of_tile_edge_lengths, list_of_poly_thresholds, area_gdf: gpd.GeoDataFrame):
+    def __init__(self, list_of_scanner_line_widths, list_of_poly_thresholds, area_gdf: gpd.GeoDataFrame):
 
-        if check_edge_length_polygon_threshold(list_of_tile_edge_lengths, list_of_poly_thresholds):
+        if check_edge_length_polygon_threshold(list_of_scanner_line_widths, list_of_poly_thresholds):
 
             self.area_multipoly = area_gdf
 
             # create map center for map location
-            self.map_center = list(area_gdf.geometry[0].centroid.coords)[0]  # why does the centroid return a Point, but map_center is list(tuples)? weird...
+            self.map_center = list(area_gdf.geometry[0].centroid.coords)[0]
             self.map_center_y, self.map_center_x = self.map_center
 
             # create basic map for presentation
@@ -179,7 +179,7 @@ class Grid_Generation_Tasks:
             self.base_map.add_control(FullScreenControl())
             self.base_map.add_control(MeasureControl())
 
-            self.tile_edge_lengths: set[float] = set(list_of_tile_edge_lengths)
+            self.scanner_line_widths: set[float] = set(list_of_scanner_line_widths)
 
             self.list_of_tasks: list[Grid_Task] = []
 
@@ -192,20 +192,59 @@ class Grid_Generation_Tasks:
         """
         return len(self.list_of_tasks)
 
-    def create_task(self, tile_edge_length: float):
-        # TODO check if there is already a task for tile_edge_length in list_of_tasks
+    def create_task(self, scanner_line_width: float):
 
-        if tile_edge_length in self.tile_edge_lengths:
+        # check if the given scanner_line_length is known
+        if scanner_line_width in self.scanner_line_widths:
 
-            new_task = Grid_Task(tile_edge_length, self.base_map)  # task self.base_map as base for the task_map
-
-            self.list_of_tasks.append(new_task)
-
-            return new_task
+            # check if there is already a task for this specific scanner_line_width in list_of_tasks
+            scanner_line_width_known = False
+            for task in self.list_of_tasks:
+                if task.scanner_line_width == scanner_line_width:
+                    scanner_line_width_known = True
+            if not scanner_line_width_known:
+                new_task = Grid_Task(scanner_line_width, self.base_map, self.area_multipoly)  # task self.base_map as base for the task_map
+                self.list_of_tasks.append(new_task)
+                return new_task
+            else:
+                print("There is already a task defined for this scanner_line_width.\n",
+                      "Please use the Manager methode 'change_task(scanner_line_width)' for changing this task.")
+                return None
 
         else:
-            print("tile_edge_length", tile_edge_length, "not in the settings")
+            print("scanner_line_length", scanner_line_width, "not in list of scanner_line_widths")
             return None
+
+    def change_task(self, scanner_line_width: float):
+        print("Don't forget to confirm your changes with the task method 'confirm_choices()'")
+
+        # wanna reconsider something after you made and confirmed changes for one scanner_line_width?
+        scanner_line_width_known = False
+        for task in self.list_of_tasks:
+            if task.scanner_line_width == scanner_line_width:
+                return task
+        if not scanner_line_width_known:
+            print("Couldn't find a defined task for the given scanner_line_width " + str(scanner_line_width))
+            print("Need to create one, meaning create_task(scanner_line_width) gets called.")
+            task = self.create_task(scanner_line_width)
+            return task
+
+    def extract_tasks(self):
+        # check if there is a task available for every edge_lenth in list self.scanner_line_widths
+        # if not create one without any area restriction (means area_multipoly will be area to examine)
+        if not len(self.scanner_line_widths) == len(self.list_of_tasks):
+            for line_width in self.scanner_line_widths:
+                tile_edge_lenth_known = False
+                for task in self.list_of_tasks:
+                    if task.scanner_line_width == line_width:
+                        tile_edge_lenth_known = True
+                if not tile_edge_lenth_known:
+                    new_task = Grid_Task(line_width, self.base_map, self.area_multipoly)
+                    self.list_of_tasks.append(new_task)
+
+        else:
+            # if everything checks out, just return the list_of_tasks
+            return self.list_of_tasks
 
 
 def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: float):
