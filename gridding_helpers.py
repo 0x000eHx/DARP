@@ -1,4 +1,5 @@
-import copy
+import sys
+import time
 import random
 from pathlib import Path
 import uuid
@@ -14,37 +15,47 @@ from shapely.geometry import Point, box, Polygon, MultiPolygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 from shapely import speedups
-from ipyleaflet import Map, basemaps, basemap_to_tiles, projections, GeoData, LayersControl, DrawControl, FullScreenControl, MeasureControl
+from ipyleaflet import Map, basemaps, basemap_to_tiles, GeoData, LayersControl, DrawControl, FullScreenControl, MeasureControl
 from ipywidgets import HTML
 
 if speedups.available:
     speedups.enable()
 
 
+def generate_file_name(filename: str):
+    export_file_name = f'{time.strftime("%Y-%m-%d_%H-%M-%S")}_{str(filename)}'
+    # Replace all characters in dict
+    b = {' ': '', '.geojson': ''}
+    for x, y in b.items():
+        export_file_name = export_file_name.replace(x, y)
+    return export_file_name
+
+
 class Grid_Task:
     """
-    One task which can hold its assigned tile_edge_length and all MultiPolygons!
+    One task which holds all necessary values like scanner_line_width and all specified Polygons in a MultiPolygon!
     """
 
-    def __init__(self, scanner_line_width: float, task_map: Map, area_multipoly: gpd.GeoDataFrame):
+    def __init__(self, scanner_line_width: float,
+                 polygon_threshold: int,
+                 dict_stc_tiles_long_lat: dict,
+                 task_map: Map,
+                 area_multipoly: MultiPolygon = None):
 
-        if scanner_line_width > 0:
-            self.scanner_line_width = scanner_line_width
-        else:
-            print("Defined tile edge length was zero or below. Setting it back to zero!")
-            self.scanner_line_width = 0.0
+        # define the necessary properties
+        self.scanner_line_width = scanner_line_width
+        self.polygon_threshold = polygon_threshold
+        self.dict_stc_tiles_long_lat = dict_stc_tiles_long_lat
+        self.multipolygon: MultiPolygon = area_multipoly
 
-        self.multipolygon: MultiPolygon = area_multipoly.geometry[0]
-
-        self.task_polygon_color: str = self.define_polygon_color()
-
-        self.draw_control = self.define_draw_control()
-
+        # define all interactive map properties
+        self.task_polygon_color: str = self.__define_polygon_color()
+        self.draw_control = self.__define_draw_control()
         self.task_map = task_map
         self.task_map.add_control(self.draw_control)
 
     # setter
-    def set_multipoly(self, new_multipoly: MultiPolygon):
+    def set_multipoly(self, new_multipoly: MultiPolygon = None):
         self.multipolygon = new_multipoly
 
     def set_task_polygon_color(self, hex_color_str: str):
@@ -52,7 +63,7 @@ class Grid_Task:
             self.task_polygon_color = hex_color_str
 
     # getter
-    def get_tile_edge_length(self):
+    def get_scanner_line_width(self):
         return self.scanner_line_width
 
     def get_multipoly(self):
@@ -62,15 +73,13 @@ class Grid_Task:
         return self.task_polygon_color
 
     # define
-    def define_polygon_color(self):
-
+    def __define_polygon_color(self):
         random_number = random.randint(1118481, 16777215)
         hex_number = str(hex(random_number))
         color_hex_number = '#' + hex_number[2:]
-
         return color_hex_number
 
-    def define_draw_control(self):
+    def __define_draw_control(self):
         draw_control = DrawControl()
         draw_control.circle = {
             "shapeOptions": {
@@ -120,11 +129,11 @@ class Grid_Task:
         print('### confirm_choices call ###\n')
         print('### draw_control.data ###\n', str(self.draw_control.data))
 
-        multipoly = self.create_multipoly_from_data(self.draw_control.data)
+        multipoly = self.__create_multipoly_from_data(self.draw_control.data)
+        if not multipoly.empty:
+            self.set_multipoly(multipoly)
 
-        self.set_multipoly(multipoly)
-
-    def create_multipoly_from_data(self, geojson_data):
+    def __create_multipoly_from_data(self, geojson_data):
         print('### create_multipoly_from_data call ###\n')
         list_of_polys = []
 
@@ -154,37 +163,64 @@ class Grid_Generation_Task_Manager:
     For each one you need to create a separate task!
     """
 
-    def __init__(self, list_of_scanner_line_widths, list_of_poly_thresholds, area_gdf: gpd.GeoDataFrame):
+    def __init__(self, list_of_scanner_line_widths, list_of_poly_thresholds, area_multipolygon: MultiPolygon, area_name: str):
 
         if check_edge_length_polygon_threshold(list_of_scanner_line_widths, list_of_poly_thresholds):
 
-            self.area_multipoly = area_gdf
+            self.area_multipoly = area_multipolygon
 
             # create map center for map location
-            self.map_center = list(area_gdf.geometry[0].centroid.coords)[0]
+            self.map_center = [self.area_multipoly.centroid.coords]
             self.map_center_y, self.map_center_x = self.map_center
 
-            # create basic map for presentation
+            # create basic map for area of interest representation in every task
+            mapnik = basemap_to_tiles(basemaps.OpenStreetMap.Mapnik)
+            mapnik.base = True
+            mapnik.name = 'Mapnik Layer'
+
+            toner = basemap_to_tiles(basemaps.Stamen.Toner)
+            toner.base = True
+            toner.name = 'Toner Layer'
+
+            bzh = basemap_to_tiles(basemaps.OpenStreetMap.BZH)
+            bzh.base = True
+            bzh.name = 'BZH layer'
+
             self.base_map = Map(
-                basemap=basemap_to_tiles(basemaps.OpenStreetMap.Mapnik),
+                layers=[mapnik, toner, bzh],
                 center=(self.map_center_x, self.map_center_y),
                 zoom=14,
                 scroll_wheel_zoom=True
             )
-            area_layer = GeoData(geo_dataframe=area_gdf.head(1), style={'color': 'blue'}, name='Talsperre Malter')
-            self.base_map.add_layer(area_layer)
+
+            # create the area of interest overlay for the map
+            # TODO take GeoData from self.area_layer which is GeoJSON and make it adjustable in a DrawControl
+            area_data = {'geometry': self.area_multipoly}
+            area_gdf = gpd.GeoDataFrame(area_data, geometry='geometry', crs=4326)
+            self.area_layer = GeoData(geo_dataframe=area_gdf, style={'color': 'blue'}, name=area_name)
+            self.base_map.add_layer(self.area_layer)
 
             # add controls
             self.base_map.add_control(LayersControl())
             self.base_map.add_control(FullScreenControl())
             self.base_map.add_control(MeasureControl())
 
-            self.scanner_line_widths: set[float] = set(list_of_scanner_line_widths)
-
             self.list_of_tasks: list[Grid_Task] = []
+            self.scanner_line_widths: list[float] = list_of_scanner_line_widths
+            self.poly_thresholds: list[int] = list_of_poly_thresholds
+
+            # calc the long/lat STC tile widths for grid generation
+            stc_tiles_edges = [x * 2 for x in self.scanner_line_widths]
+            stc_grid_edges_long_lat = generate_stc_grid_edges_long_lat(stc_tiles_edges, self.area_multipoly)
+
+            # create a task for every scanner_line_width
+            for scanner_line_width in self.scanner_line_widths:
+                dict_long_lat = stc_grid_edges_long_lat[f'{scanner_line_width}']
+                self.list_of_tasks.append(self.__create_task(scanner_line_width, dict_long_lat))
 
         else:
             print("Something is off! Check List of Tile Edge Lengths and its assigned List of Polygon Thresholds")
+            sys.exit(1)
 
     def __len__(self):
         """
@@ -192,59 +228,39 @@ class Grid_Generation_Task_Manager:
         """
         return len(self.list_of_tasks)
 
-    def create_task(self, scanner_line_width: float):
+    def __create_task(self, scanner_line_width: float, dict_stc_tiles_long_lat: dict):
 
-        # check if the given scanner_line_length is known
-        if scanner_line_width in self.scanner_line_widths:
+        poly_threshold_value = self.poly_thresholds[self.scanner_line_widths.index(scanner_line_width)]
 
-            # check if there is already a task for this specific scanner_line_width in list_of_tasks
-            scanner_line_width_known = False
-            for task in self.list_of_tasks:
-                if task.scanner_line_width == scanner_line_width:
-                    scanner_line_width_known = True
-            if not scanner_line_width_known:
-                new_task = Grid_Task(scanner_line_width, self.base_map, self.area_multipoly)  # task self.base_map as base for the task_map
-                self.list_of_tasks.append(new_task)
-                return new_task
-            else:
-                print("There is already a task defined for this scanner_line_width.\n",
-                      "Please use the Manager methode 'change_task(scanner_line_width)' for changing this task.")
-                return None
+        # task self.base_map as base for the task_map
+        new_task = Grid_Task(scanner_line_width, poly_threshold_value, dict_stc_tiles_long_lat, self.base_map)
 
-        else:
-            print("scanner_line_length", scanner_line_width, "not in list of scanner_line_widths")
-            return None
+        return new_task
 
-    def change_task(self, scanner_line_width: float):
-        print("Don't forget to confirm your changes with the task method 'confirm_choices()'")
+    def set_task_area(self, scanner_line_width: float):
+        """
+        A task for every scanner_line_width get created automatically at Task Manager init phase.
 
-        # wanna reconsider something after you made and confirmed changes for one scanner_line_width?
-        scanner_line_width_known = False
+        With this methode you can specify the area.
+
+        :return: The task of a specific scanner_line_width. Use its methods for drawing a Map.
+        """
+
         for task in self.list_of_tasks:
             if task.scanner_line_width == scanner_line_width:
                 return task
-        if not scanner_line_width_known:
-            print("Couldn't find a defined task for the given scanner_line_width " + str(scanner_line_width))
-            print("Need to create one, meaning create_task(scanner_line_width) gets called.")
-            new_task = self.create_task(scanner_line_width)
-            return new_task
 
     def extract_tasks(self):
-        # check if there is a task available for every edge_lenth in list self.scanner_line_widths
-        # if not create one without any area restriction (means area_multipoly will be area to examine)
-        if not len(self.scanner_line_widths) == len(self.list_of_tasks):
-            for line_width in self.scanner_line_widths:
-                tile_edge_lenth_known = False
-                for task in self.list_of_tasks:
-                    if task.scanner_line_width == line_width:
-                        tile_edge_lenth_known = True
-                if not tile_edge_lenth_known:
-                    new_task = Grid_Task(line_width, self.base_map, self.area_multipoly)
-                    self.list_of_tasks.append(new_task)
 
-        else:
-            # if everything checks out, just return the list_of_tasks
-            return self.list_of_tasks
+        for task in self.list_of_tasks:
+            # if task multipoly is not set: set it to the current value of self.area_multipoly for no specification
+            if task.get_multipoly() is None:
+                task.set_multipoly(self.area_multipoly)
+
+        # sort the task list descending by its task scanner_line_width property
+        self.list_of_tasks.sort(key=lambda x: x.scanner_line_width, reverse=True)
+
+        return self.list_of_tasks
 
 
 def get_long_lat_diff(square_edge_length_meter: float, startpoint_latitude: float):
@@ -443,14 +459,18 @@ def get_biggest_area_polygon(dam_file_name):
     return biggest_area
 
 
-def generate_square_edges_long_lat(grid_edge_lengths, selected_area) -> dict:
+def generate_stc_grid_edges_long_lat(stc_grid_edge_lengths_meter, selected_area) -> dict:
+
+    # generate tile width and height by calculating the biggest tile size to go for and divide it into the other tile sizes
+    # hopefully clears out a mismatch in long/lat max and min values between biggest tile size and smallest
+
     list_long_lat_tuples = {}
-    edge_length_max = max(grid_edge_lengths)
+    edge_length_max = max(stc_grid_edge_lengths_meter)
 
     # latitude == width (y diff), longitude == height (x diff)
     tile_width_max, tile_height_max = get_long_lat_diff(edge_length_max, selected_area.centroid.y)
 
-    for edge_length_meter in grid_edge_lengths:
+    for edge_length_meter in stc_grid_edge_lengths_meter:
         if edge_length_max % edge_length_meter == 0:
             divider = int(edge_length_max / edge_length_meter)
             tile_width = tile_width_max / divider
@@ -579,11 +599,12 @@ def create_geodataframe_dict(best_offset,
     return gdf_dict
 
 
-def find_tile_groups_of_given_edge_length(area_polygon,
-                                          dict_square_edge_length_long_lat: dict,
-                                          grid_edge_length_meter,
-                                          polygon_threshold,
-                                          known_tiles_gdf: gpd.GeoDataFrame):
+def generate_tile_groups_of_given_edge_length(area_polygon,
+                                              specific_area_multipoly: MultiPolygon,
+                                              dict_square_edge_length_long_lat: dict,
+                                              grid_edge_length_meter,
+                                              polygon_threshold,
+                                              known_tiles_gdf: gpd.GeoDataFrame):
     # there is no know geometry data available
     if known_tiles_gdf.empty:
         # find offset for biggest tile size first
@@ -658,36 +679,29 @@ def find_tile_groups_of_given_edge_length(area_polygon,
             return gdf
 
 
-def find_grid(area_polygon, list_sensor_line_lengths: list, polygon_threshold: list):
-    # generate tile width and height by calculating the biggest tile size to go for and divide it into the other tile sizes
-    # hopefully clears out a mismatch in long/lat max and min values between biggest tile size and smallest
-
-    grid_square_edges_meter = [x * 2 for x in list_sensor_line_lengths]  # double values for STC tile construction
-
-    grid_square_edges_long_lat = generate_square_edges_long_lat(grid_square_edges_meter, area_polygon)
+def generate_grid(task_manager: Grid_Generation_Task_Manager):
+    # first we need the task list from the task manager
+    task_list = task_manager.extract_tasks()  # the list is sorted from the biggest to the smallest scanner line width
 
     gdf_collection = gpd.GeoDataFrame()  # collect all results in this geodataframe
 
-    grid_square_edges_meter = np.flip(
-        grid_square_edges_meter)  # from greatest to smallest value, means settings flipped
-    polygon_threshold = np.flip(polygon_threshold)  # keep threshold values relative to edge lengths intact
-
     # search starts at biggest tiles, the greatest edge length and relative polygon threshold
-    for idx, edge_length_meter in enumerate(grid_square_edges_meter):
-        gdf_one_tile_size = find_tile_groups_of_given_edge_length(area_polygon,
-                                                                  grid_square_edges_long_lat[f'{edge_length_meter}'],
-                                                                  edge_length_meter,
-                                                                  polygon_threshold[idx],
-                                                                  gdf_collection)
+    for idx, task in enumerate(task_list):
+        gdf_one_tile_size = generate_tile_groups_of_given_edge_length(task_manager.area_multipoly,
+                                                                      task.get_multipoly(),
+                                                                      task.dict_stc_tiles_long_lat,
+                                                                      task.get_scanner_line_width(),
+                                                                      task.polygon_threshold,
+                                                                      gdf_collection)
         if gdf_one_tile_size.empty:
-            print("Didn't find a grid with", list_sensor_line_lengths[idx],
+            print("Didn't find a grid with", task.get_scanner_line_width(),
                   "square edge length!\nContinuing with smaller one...")
         else:
-            print(f'Found grid with tile edge length of {edge_length_meter / 2}m')
+            print(f'Found grid with tile edge length of {task.get_scanner_line_width()}m')
             gdf_collection = gpd.GeoDataFrame(pandas.concat([gdf_collection,
                                                              gdf_one_tile_size],
                                                             axis=0,
                                                             ignore_index=True),
-                                              crs=gdf_one_tile_size.crs)  # , verify_integrity=True
+                                              crs=4326)
 
     return gdf_collection
