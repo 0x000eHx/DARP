@@ -157,11 +157,11 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
     done_queue = Queue()
     process_count = 1  # psutil.cpu_count(logical=False)  # only physical available core count for this task
 
-    list_geoseries = []
+    list_data_dicts = []
     task_counter = 0
     for ix_startpoint, segment in enumerate(paths):
         for line_tuples in segment:
-            one_task = [task_counter, generate_linestring_geoseries, (line_tuples, ix_startpoint, tiles_group_identifier)]
+            one_task = [task_counter, generate_linestring_data, (line_tuples, ix_startpoint, tiles_group_identifier)]
             task_queue.put(one_task)
             task_counter += 1
 
@@ -177,9 +177,9 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
 
     for _ in tqdm(range(task_counter)):
         try:
-            idx, geoseries = done_queue.get()
-            if not geoseries.empty:
-                list_geoseries.append(geoseries)
+            idx, data_dict = done_queue.get()
+            if len(data_dict) > 0:
+                list_data_dicts.append(data_dict)
                 # append, not extend: new geoseries is just one line with assigned start point etc
 
         except queue.Empty as e:
@@ -195,7 +195,7 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
     print("Measured time LineString path generation: ", (measure_end - measure_start), " sec")
 
     gdf_subcells = gpd.GeoDataFrame(list_subcells_dicts, crs=4326).set_geometry('geometry')
-    gdf_trajectory_paths = gpd.GeoDataFrame(list_geoseries, crs=4326).set_geometry('geometry')
+    gdf_trajectory_paths = gpd.GeoDataFrame(list_data_dicts, crs=4326).set_geometry('geometry')
 
     gdf_collection = gpd.GeoDataFrame(pandas.concat([gdf_subcells, gdf_trajectory_paths], axis=0, ignore_index=True),
                                       crs=gdf_trajectory_paths.crs)
@@ -206,7 +206,7 @@ def generate_stc_geodataframe(input_gdf: gpd.GeoDataFrame, assignment_matrix: np
     return gdf_collection
 
 
-def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_startpoint, tiles_group_identifier):
+def generate_linestring_data(list_of_subcells_dicts, line_tuples, assigned_startpoint, tiles_group_identifier):
     # p1 row index, p1 column index, p2 row index, p2 column index = line_tuples
     p1_r_i, p1_c_i, p2_r_i, p2_c_i = line_tuples
 
@@ -224,12 +224,11 @@ def generate_linestring_geoseries(list_of_subcells_dicts, line_tuples, assigned_
                 'poly': False,
                 'line': True,
                 'geometry': LineString([p1.centroid, p2.centroid])}
-        geoseries = gpd.GeoSeries(data, crs=4326)
 
     else:
-        geoseries = gpd.GeoSeries()
+        data = {}
 
-    return geoseries
+    return data
 
 
 def divide_polygon(row_idx, column_idx, poly: Polygon, assigned_startpoint, tiles_group_identifier):
@@ -282,7 +281,7 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
     rows_range = np.flip(rows_range)
     np_bool_grid = np.full(shape=(rows_range.shape[0], columns_range.shape[0]), fill_value=False, dtype=bool)
 
-    list_numpy_contour_positions_geoseries = []
+    list_numpy_contour_positions_dicts = []
 
     # Create queues
     task_queue = Queue()
@@ -309,7 +308,7 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
             data = {'row_idx': row_idx,
                     'column_idx': col_idx,
                     'geometry': multipoly_list[ix]}
-            list_numpy_contour_positions_geoseries.append(gpd.GeoSeries(data, crs=4326))
+            list_numpy_contour_positions_dicts.append(data)
 
         except queue.Empty as e:
             print(e)
@@ -320,7 +319,7 @@ def generate_numpy_contour_array(multipoly: MultiPolygon, dict_tile_width_height
 
     print("Area contour numpy array (bool_area_array) generated from big STC tiles.")
 
-    gdf_numpy_positions = gpd.GeoDataFrame(list_numpy_contour_positions_geoseries, crs=4326).set_geometry('geometry')
+    gdf_numpy_positions = gpd.GeoDataFrame(list_numpy_contour_positions_dicts, crs=4326).set_geometry('geometry')
 
     print("GeoDataFrame with tile positions inside numpy contour bool_array created.")
 

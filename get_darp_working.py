@@ -48,11 +48,11 @@ if __name__ == '__main__':
     print(f'Loaded grid file: ./geodataframes/{last_file_no_suffix}.geojson')
 
     list_real_start_points_coords = settings['real_start_points']
-    export_file_name = generate_file_name(settings['geojson_file_name'])
+    export_file_name = generate_file_name(settings['area_name'])
     max_distance_per_task = settings['max_distance_per_task']
 
     # check if start points from settings are inside given geojson area
-    if check_real_start_points(settings['geojson_file_name'], settings['real_start_points']):
+    if check_real_start_points(settings['area_name'], settings['real_start_points']):
 
         # path pre-calculations
 
