@@ -15,7 +15,7 @@ def write_yaml_config_file(str_filepath):
                       # index is equivalent to index of edge length
                       'max_distance_per_task': 10000,  # in meter
                       'trigger_image_export_final_assignment_matrix': False,  # recommended only for debugging purposes
-                      'trigger_video_export_assignment_matrix_changes': True,  # recommended only for debugging purposes
+                      'trigger_video_export_assignment_matrix_changes': False,  # recommended only for debugging purposes
                       'darp_max_iter': 100000,
                       'darp_dynamic_tiles_threshold': 500,  # if darp hits iter max, will increase by 10 until this threshold reached
                       'darp_cc_variation': 0.01,
