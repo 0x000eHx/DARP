@@ -1,5 +1,5 @@
 import sys
-from gridding_helpers import generate_file_name, generate_grid, get_biggest_area_polygon, Grid_Generation_Task_Manager
+from gridding_helpers import generate_file_name, generate_grid, read_biggest_area_polygon_from_file, Grid_Generation_Task_Manager
 import time
 from setting_helpers import load_yaml_config_file, write_yaml_config_file
 
@@ -10,10 +10,10 @@ if __name__ == '__main__':
     settings = load_yaml_config_file(settings_yaml_filepath)
 
     # find the Shapely Geometry (Multipolygon) of interest
-    area_polygon = get_biggest_area_polygon(settings['geojson_file_name'])
+    area_polygon = read_biggest_area_polygon_from_file(settings['area_name'])
 
     # create a task manager
-    task_manager = Grid_Generation_Task_Manager(settings['sensor_line_length_meter'], settings['polygon_threshold'], area_polygon, settings['geojson_file_name'])
+    task_manager = Grid_Generation_Task_Manager(settings['sensor_line_length_meter'], settings['polygon_threshold'], area_polygon, settings['area_name'])
     # Grid generation will be generic without any specification
     # the widest scanner line will get used to create the biggest grid
     # use the Notebook if you wanna specify the regions per scanner line width
@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     if not grid_gdf.empty:
         # save best results
-        file_name = generate_file_name(settings['geojson_file_name'])
+        file_name = generate_file_name(settings['area_name'])
         grid_gdf.to_file(filename=f'./geodataframes/{file_name}_grid.geojson', driver="GeoJSON")
         print("Successfully finished grid generation and saved geometry to file!\n",
               f'./geodataframes/{file_name}_grid.geojson')

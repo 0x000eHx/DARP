@@ -2,15 +2,15 @@ import yaml
 
 
 def write_yaml_config_file(str_filepath):
-    start_settings = {'geojson_file_name': 'Talsperre Malter.geojson',
-                      'sensor_line_length_meter': [5, 15],  # scanner line lengths in meter for grid generation (can contain one or more values)
+    start_settings = {'area_name': 'Talsperre Malter',
+                      'sensor_line_length_meter': [5, 10, 20],  # scanner line lengths in meter for grid generation (can contain one or more values)
                       'real_start_points': [
                           [13.653522254079629, 50.92603465830493],  # shapely x (longitude), y (latitude) values
                           [13.6500293945372, 50.91945111878728],    # position in this list will be priority
                           [13.654725066304804, 50.921186253206045], # top coords get chosen first
                           [13.664545589728833, 50.907868824583616]
                       ],
-                      'polygon_threshold': [5, 4],  # always keep the same count of numbers here as in sensor_line_length_meter
+                      'polygon_threshold': [5, 4, 2],  # always keep the same count of numbers here as in sensor_line_length_meter
                       # polygon groups with given number below this value will be considered irrelevant
                       # index is equivalent to index of edge length
                       'max_distance_per_task': 10000,  # in meter
