@@ -37,9 +37,10 @@ class MultiRobotPathPlanner(DARP):
             if image_export and len(self.darp_instance.init_robot_pos) > 1:
                 self.to_image()
 
-            if video_export and len(self.darp_instance.init_robot_pos) > 1:
+            # if video_export and len(self.darp_instance.init_robot_pos) > 1:
                 # otherwise there will be no saved .gif file to convert
-                self.to_video()
+                # self.to_video()  # enable when moviepy is fixed; current 1.0.3 use_clip_fps_by_default method broken
+
 
             # Iterate for 4 different ways to join edges in MST
             self.mode_to_drone_turns = []
@@ -209,6 +210,9 @@ class MultiRobotPathPlanner(DARP):
         # existing gif in results_export folder?
         num_of_processes = os.cpu_count() - 1
         clip = mp.VideoFileClip("./result_export/" + self.export_file_name + ".gif")
-        clip.write_videofile("./result_export/" + self.export_file_name + ".mp4", audio=False, threads=num_of_processes)
+
+        # moviepy 1.0.3 use_clip_fps_by_default method broken
+        # following method won't work cause of it
+        clip.write_videofile("./result_export/" + self.export_file_name + ".mp4", fps=clip.fps, audio=False, threads=num_of_processes)
         clip.close()
         print("Created MP4 video from assignment matrix animation GIF file")
