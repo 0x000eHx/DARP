@@ -19,10 +19,12 @@ Look up the original project for further details, how the algorithm works and al
 ## Current Status
 
 This README needs work.
-
 Will extend this doc to the current development state soon...
 
+
 In the meantime:
+Install the environment via Anaconda (Conda) or Mamba (conda_environment.yaml). 
+
 Try using the "start_grid_generation_notebook" Jupyter Notebook and draw regions (as Polygons) inside a area of interest.
 Start the grid generation and get the Spanning Tree Coverage (STC) Tiles.
 
