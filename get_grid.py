@@ -1,7 +1,7 @@
 import sys
-from gridding_helpers import generate_file_name, generate_grid, read_biggest_area_polygon_from_file, Grid_Generation_Task_Manager
+from helper_funcs.gridding_helpers import generate_file_name, generate_grid, read_biggest_area_polygon_from_file, Grid_Generation_Task_Manager
 import time
-from setting_helpers import load_yaml_config_file, write_yaml_config_file
+from helper_funcs.setting_helpers import load_yaml_config_file, write_yaml_config_file
 
 
 if __name__ == '__main__':

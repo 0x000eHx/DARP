@@ -478,7 +478,7 @@ def check_edge_length_polygon_threshold(list_sensor_line_lengths, polys_threshol
 
 
 def read_biggest_area_polygon_from_file(dam_file_name):
-    dam_geojson_filepath = Path("dams_single_geojsons", dam_file_name + '.geojson')
+    dam_geojson_filepath = Path("../dams_single_geojsons", dam_file_name + '.geojson')
     gdf_dam = gpd.read_file(dam_geojson_filepath)
 
     gdf_dam_exploded = gdf_dam.geometry.explode(index_parts=True)  # no index_parts / .tolist()

@@ -1,4 +1,4 @@
-from Edges import Edge, Graph
+from helper_funcs.Edges import Edge, Graph
 
 
 class Kruskal(object):

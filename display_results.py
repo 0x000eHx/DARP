@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 import geopandas as gpd
 import webbrowser
-from setting_helpers import load_yaml_config_file
+from helper_funcs.setting_helpers import load_yaml_config_file
 import folium
 
 

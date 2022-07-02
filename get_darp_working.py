@@ -3,11 +3,11 @@ import geopandas as gpd
 from pathlib import Path
 import os
 import time
-from gridding_helpers import check_real_start_points
-from path_planning_pre_calculation import generate_numpy_contour_array, get_random_start_points_list, \
+from helper_funcs.gridding_helpers import check_real_start_points
+from helper_funcs.path_planning_pre_calculation import generate_numpy_contour_array, get_random_start_points_list, \
     generate_stc_geodataframe, calc_length_meter
-from setting_helpers import load_yaml_config_file
-from MultiRobotPathPlanner import MultiRobotPathPlanner
+from helper_funcs.setting_helpers import load_yaml_config_file
+from helper_funcs.MultiRobotPathPlanner import MultiRobotPathPlanner
 import pandas
 import numpy as np
 from shapely.ops import linemerge

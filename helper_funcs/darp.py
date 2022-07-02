@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 import cv2
-from Visualization import darp_area_visualization
+from helper_funcs.Visualization import darp_area_visualization
 import time
 from tqdm.auto import tqdm
 import imageio
@@ -488,7 +488,7 @@ class DARP:
                                                                            self.color, self.init_robot_pos)
 
         if self.video_export and len(self.init_robot_pos) > 1:
-            movie_file_path = Path("result_export", self.import_file_name + ".gif")
+            movie_file_path = Path("../result_export", self.import_file_name + ".gif")
             if not movie_file_path.parent.exists():
                 os.makedirs(movie_file_path.parent)
             self.gif_writer = imageio.get_writer(movie_file_path, mode='I', duration=0.15)
@@ -501,7 +501,7 @@ class DARP:
                 seed(self.seed_value)  # correct numba seeding
 
     def divideRegions(self):
-        print("divideRegions() Start:")
+        print("DARP divideRegions() Start:")
         time_start = time.time()
         success = False
         criterionMatrix = np.zeros((self.rows, self.cols))
@@ -520,6 +520,7 @@ class DARP:
             print("Initial drone / startpoint count is only 1. Skip DARP.")
 
         else:
+            print("DARP loop Start...")
             # to reduce overall tile reassignment value over time in self.DesirableAssign:
             # after assigning tiles as voronoi diagram that the lowest value of self.ArrayOfElements should match
             # to the lowest entry in self.DesirableAssign... small optimization from the start but not necessary
@@ -673,8 +674,9 @@ class DARP:
 
     def video_export_add_frame(self, iteration: int,
                                connected_regions: np.ndarray,
-                               draw_meta_infos=False):
-        framerate = 5  # every 5th iteration
+                               draw_meta_infos=False,
+                               framerate=5):
+          # every 5th iteration
 
         if (iteration % framerate) == 0 or iteration == 0:
             uint8_array = np.uint8(np.interp(self.A, (self.A.min(), self.A.max()), (0, 255)))  # TODO interpolate or scale?

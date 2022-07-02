@@ -1,8 +1,8 @@
 from pathlib import Path
 from darp import DARP
 import numpy as np
-from kruskal import Kruskal
-from CalculateTrajectories import CalculateTrajectories
+from helper_funcs.kruskal import Kruskal
+from helper_funcs.CalculateTrajectories import CalculateTrajectories
 from Visualization import visualize_paths
 import sys
 from turns import turns
@@ -200,7 +200,7 @@ class MultiRobotPathPlanner(DARP):
         return MSTs
 
     def to_image(self):
-        file_path = Path('result_export', self.export_file_name + ".jpg")
+        file_path = Path('../result_export', self.export_file_name + ".jpg")
         if not file_path.parent.exists():
             os.makedirs(file_path.parent)
         plt.imsave(file_path, self.darp_instance.A, dpi=100)
