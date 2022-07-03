@@ -14,7 +14,7 @@ def search_newest_file_in_folder(path_to_folder, unique_search_string):
 
 
 if __name__ == '__main__':
-    last_file_no_suffix = search_newest_file_in_folder(Path('geodataframes'), 'path_per_tilegroup')
+    last_file_no_suffix = search_newest_file_in_folder(Path('../geodataframes'), 'path_per_tilegroup')
     path_per_tilegroup_gdf = gpd.read_file(filename=f'./geodataframes/{last_file_no_suffix}.geojson')
 
     for i, series in path_per_tilegroup_gdf.iterrows():

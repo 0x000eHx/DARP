@@ -11,10 +11,10 @@ from pathlib import Path
 
 if __name__ == '__main__':
 
-    saxony_geojson_filepath = Path("overall_geojsons", "saxony.geojson")
+    saxony_geojson_filepath = Path("../overall_geojsons", "saxony.geojson")
     df_boundary = gpd.read_file(saxony_geojson_filepath)
 
-    water_saxony_geojson_filepath = Path("overall_geojsons", "water_only.geojson")
+    water_saxony_geojson_filepath = Path("../overall_geojsons", "water_only.geojson")
     df = gpd.read_file(water_saxony_geojson_filepath)
     df = df[~df['name'].isnull()]
     df['name'] = df['name'].astype('str')
